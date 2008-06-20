@@ -186,18 +186,6 @@ class TestAcceleratorMiddleware(unittest.TestCase):
         generator = accelerator(environ, start_response)
         self.assertEqual(list(generator), ['abc', 'def'])
         self.assertEqual(start_response.status, '200 OK')
-        self.assertEqual(start_response.headers, [])
-        self.assertEqual(start_response.exc_info, None)
-
-    def test_call_fetch_from_cache(self):
-        app = DummyApp()
-        policy = DummyPolicy(result=('200 OK', [], ['abc', 'def']))
-        environ = self._makeEnviron()
-        accelerator = self._makeOne(app, policy)
-        start_response = DummyStartResponse()
-        generator = accelerator(environ, start_response)
-        self.assertEqual(list(generator), ['abc', 'def'])
-        self.assertEqual(start_response.status, '200 OK')
         self.assertEqual(start_response.headers,
                          [('X-Cached-By', 'repoze.accelerator')])
         self.assertEqual(start_response.exc_info, None)
