@@ -198,7 +198,8 @@ class TestAcceleratorMiddleware(unittest.TestCase):
         generator = accelerator(environ, start_response)
         self.assertEqual(list(generator), ['abc', 'def'])
         self.assertEqual(start_response.status, '200 OK')
-        self.assertEqual(start_response.headers, [])
+        self.assertEqual(start_response.headers,
+                         [('X-Cached-By', 'repoze.accelerator')])
         self.assertEqual(start_response.exc_info, None)
 
     def test_call_nofetch_start_response_not_called(self):
