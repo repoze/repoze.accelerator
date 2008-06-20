@@ -15,6 +15,7 @@ class Accelerator:
 
         if result is not None:
             status, headers, content = result
+            headers = list(headers) + [('X-Cached-By', 'repoze.accelerator')]
             start_response(status, headers)
             for chunk in content:
                 yield chunk
@@ -120,5 +121,8 @@ class RAMStorage:
     def fetch(self, url):
         return self.data.get(url)
 
-def main():
-    raise NotImplementedError
+def main(app, global_conf, **local_conf):
+    storage = RAMStorage()
+    policy = NaivePolicy(storage)
+    return Accelerator(app, policy)
+
