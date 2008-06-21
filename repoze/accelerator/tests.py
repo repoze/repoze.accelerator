@@ -1,14 +1,37 @@
 import unittest
 
+_MARKER = object()
+
 class TestRAMStorage(unittest.TestCase):
     def _getTargetClass(self):
         from repoze.accelerator.middleware import RAMStorage
         return RAMStorage
 
-    def _makeOne(self, lock):
+    def _makeOne(self, lock, config=_MARKER):
         klass = self._getTargetClass()
-        return klass(lock)
-        
+        if config is _MARKER:
+            return klass(lock)
+        return klass(lock, config=config)
+
+    def test_class_conforms_to_IStorage(self):
+        from repoze.accelerator.interfaces import verifyClass
+        from repoze.accelerator.interfaces import IStorage
+        verifyClass(IStorage, self._getTargetClass())
+
+    def test_class_provides_IStorageFactory(self):
+        from repoze.accelerator.interfaces import verifyObject
+        from repoze.accelerator.interfaces import IStorageFactory
+        verifyObject(IStorageFactory, self._getTargetClass())
+
+    def test_instance_conforms_to_IStorage(self):
+        from repoze.accelerator.interfaces import verifyObject
+        from repoze.accelerator.interfaces import IStorage
+        verifyObject(IStorage, self._makeOne(DummyLock()))
+
+    def test_ctor_accepts_config(self):
+        lock = DummyLock()
+        storage = self._makeOne(lock, config={})
+
     def test_store_nonexistent(self):
         lock = DummyLock()
         storage = self._makeOne(lock)
@@ -42,7 +65,7 @@ class TestRAMStorage(unittest.TestCase):
         lock = DummyLock()
         storage = self._makeOne(lock)
         self.assertEqual(storage.fetch('url'), None)
-        
+
     def test_fetch_existing(self):
         lock = DummyLock()
         storage = self._makeOne(lock)
@@ -54,9 +77,11 @@ class TestNaivePolicy(unittest.TestCase):
         from repoze.accelerator.middleware import NaivePolicy
         return NaivePolicy
 
-    def _makeOne(self, storage):
+    def _makeOne(self, storage, config=_MARKER):
         klass = self._getTargetClass()
-        return klass(storage)
+        if config is _MARKER:
+            return klass(storage)
+        return klass(storage, config=config)
 
     def _makeEnviron(self):
         return {
@@ -66,6 +91,25 @@ class TestNaivePolicy(unittest.TestCase):
             'REQUEST_METHOD': 'GET',
             }
 
+    def test_class_conforms_to_IPolicy(self):
+        from repoze.accelerator.interfaces import verifyClass
+        from repoze.accelerator.interfaces import IPolicy
+        verifyClass(IPolicy, self._getTargetClass())
+
+    def test_class_provides_IPolicyFactory(self):
+        from repoze.accelerator.interfaces import verifyObject
+        from repoze.accelerator.interfaces import IPolicyFactory
+        verifyObject(IPolicyFactory, self._getTargetClass())
+
+    def test_instance_conforms_to_IPolicy(self):
+        from repoze.accelerator.interfaces import verifyObject
+        from repoze.accelerator.interfaces import IPolicy
+        verifyObject(IPolicy, self._makeOne(DummyStorage()))
+
+    def test_ctor_accepts_config(self):
+        storage = DummyStorage()
+        policy = self._makeOne(storage, config={})
+
     def test_store_not_cacheable_post_request_method(self):
         storage = DummyStorage()
         policy = self._makeOne(storage)
@@ -73,7 +117,7 @@ class TestNaivePolicy(unittest.TestCase):
         environ['REQUEST_METHOD'] = 'POST'
         result = policy.store('200 OK', [], environ)
         self.assertEqual(result, None)
-        
+
     def test_store_not_cacheable_pragma_no_cache(self):
         storage = DummyStorage()
         policy = self._makeOne(storage)
@@ -105,6 +149,18 @@ class TestNaivePolicy(unittest.TestCase):
         result = policy.store('500 Error', [], environ)
         self.assertEqual(result, None)
 
+    def test_store_allowed_request_method_cacheable(self):
+        storage = DummyStorage()
+        policy = self._makeOne(storage,
+                               config={'policy.allowed_methods': 'GET FOO'})
+        environ = self._makeEnviron()
+        environ['REQUEST_METHOD'] = 'FOO'
+        result = policy.store('200 OK', [('header1', 'value1')], environ)
+        self.assertEqual(result, False)
+        self.assertEqual(storage.url, 'http://example.com')
+        self.assertEqual(storage.status, '200 OK')
+        self.assertEqual(storage.outheaders, [('header1', 'value1')])
+
     def test_store_no_request_method_cacheable(self):
         storage = DummyStorage()
         policy = self._makeOne(storage)
@@ -133,7 +189,7 @@ class TestNaivePolicy(unittest.TestCase):
         environ['REQUEST_METHOD'] = 'POST'
         result = policy.fetch(environ)
         self.failIfEqual(result, 123)
-        
+
     def test_fetch_fails_pragma_no_cache(self):
         storage = DummyStorage(result=123)
         policy = self._makeOne(storage)
@@ -199,7 +255,7 @@ class TestAcceleratorMiddleware(unittest.TestCase):
         start_response = DummyStartResponse()
         result = accelerator(environ, start_response)
         self.assertRaises(RuntimeError, list, result)
-        
+
     def test_call_cantstore(self):
         app = DummyApp(headers=[('a', 'b')])
         policy = DummyPolicy(result=None)
@@ -227,7 +283,7 @@ class TestAcceleratorMiddleware(unittest.TestCase):
         self.assertEqual(start_response.exc_info, None)
         self.assertEqual(policy.handler.chunks, ['hello', 'world'])
         self.assertEqual(policy.handler.closed, True)
-                         
+
 
 class DummyHandler:
     def __init__(self):
@@ -249,7 +305,7 @@ class DummyApp:
         self.status = status
         self.headers = headers
         self.call_start_response = True
-        
+
     def __call__(self, environ, start_response):
         self.environ = environ
         if self.call_start_response:
@@ -271,7 +327,7 @@ class DummyStorage:
     def __init__(self, result=None, writer=False):
         self.result = result
         self.writer = writer
-        
+
     def store(self, url, status, outheaders):
         self.url = url
         self.status = status
@@ -291,4 +347,4 @@ class DummyLock:
 
     def release(self):
         self.released += 1
-        
+
