@@ -1,0 +1,130 @@
+Notes on interpreting caching headers within an accelerator
+===========================================================
+
+Overview
+--------
+
+An HTTP accelerator functions as an HTTP proxy, but is configured and
+managed by the operator of the "origin server."  As such, it may relax
+or violate the normal rules of HTTP caching:  it is logically part of
+the application being proxied.
+
+In particular, an accelerator may be configured to:
+
+ - serve certain stale response entities without revalidation.
+
+ - cache response entities which might normally be un-cacheable (e.g.,
+   for authenticated requests).
+
+ - use application-specific logic (e.g., the value of a particular
+   cookie) to decide which cached response entity to serve.
+
+When used as part of another applciation (e.g., as WSGI middleware),
+and accelerator may be used to fetch some responses from origin servers
+which are never directly returned to the client (e.g., expanding XIncludes
+or other "page assembly" markup).  In such cases, the accelerator may be
+configured to ignore some other requirements of the RFC (such as setting
+'Age' and 'Warning' headers).
+
+
+Header: 'Age'
+-------------
+
+This header is supposed to be replaced whenever serving a response
+from cache.  Accelerators should be able to ignore this requirement,
+since they are *not* caches from the perspective of their clients.
+
+- see http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.6
+
+
+Header: 'Cache-Control'
+-----------------------
+
+The 'Cache-Control' header may be present in both the request and the
+response.  Because the accelerator is *not* a cache from the perspective
+of the client, it should ignore any 'Cache-Control' header in the request.
+
+- Directives of interest
+
+  * 'max-age' (response only)
+
+    If set by the origin server, this directive controls how long
+    the response is considered "fresh".  It implies 'public', unless
+    one of the other,  more restrictive directives is present.
+
+  * 'public'
+
+    The response may be cached freely, even if it might otherwise be
+    considered uncacheable.
+
+  * 'private'
+
+    When no field-level restriction is attached, indicates that the
+    response should not be shared with other users.  Field-level
+    restrictions are tricky, and not covered here.
+
+  * 'no-cache' (response only)
+
+    When no field-level restriction is attached, indicates that the
+    response should not be served without revalidation, even if fresh.
+    Field-level restrictions are tricky, and not covered here.
+
+  * 'no-store' (response only)
+
+    The response must not be cached at all.
+
+  * 'must-revalidate'
+
+    Stale responses must be revalidated befor they are served.
+
+- Not of interest
+
+  * 'min-fresh' (only in request)
+
+  * 'max-stale' (only in request)
+
+  * 'only-if-cached' (only in request)
+
+  * 's-maxage' (relevant only for downstream caches)
+
+  * 'no-transform' (relevant only for downstream caches)
+
+- see http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.9
+
+
+Header: 'Date'
+--------------
+
+Because it is within the application, the accelerator might chose to
+replace the 'Date' header on a cached response, in order to make it
+apparently fresh to downstream caches.
+
+- http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.18
+
+
+Header: 'ETag'
+-----------------
+
+Either "strong" or "weak" (when prefixed by 'W/'), entity tags identify
+a particular "version" of a resource.
+
+- http://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.11
+
+- http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.19
+
+
+Header: 'Expires'
+-----------------
+
+Some pre-HTTP/1.1 origin servers do not provide a 'Cache-Control: max-age'
+directive, but do provide an 'Expires:' header.  In such cases, the
+effective max-age can be computed by subtracting the 'Date' header value
+from the 'Expires' header value.
+
+- http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.21
+
+
+Header: 'Last-Modified'
+-----------------------
+
+- http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.29
