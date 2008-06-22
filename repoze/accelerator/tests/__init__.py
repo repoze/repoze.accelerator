@@ -310,15 +310,15 @@ class Test_main(unittest.TestCase):
         return object()
 
     def test_main_defaults(self):
-        from repoze.accelerator.middleware import NaivePolicy
-        from repoze.accelerator.middleware import RAMStorage
+        from repoze.accelerator.policy import AcceleratorPolicy
+        from repoze.accelerator.storage import MemoryStorage
         app = self._makeApp()
 
         accel = self._callFUT(app, {})
 
         self.failUnless(accel.app is app)
-        self.failUnless(isinstance(accel.policy, NaivePolicy))
-        self.failUnless(isinstance(accel.policy.storage, RAMStorage))
+        self.failUnless(isinstance(accel.policy, AcceleratorPolicy))
+        self.failUnless(isinstance(accel.policy.storage, MemoryStorage))
 
     def test_main_factories(self):
 
