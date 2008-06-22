@@ -20,11 +20,11 @@ In particular, an accelerator may be configured to:
    cookie) to decide which cached response entity to serve.
 
 When used as part of another applciation (e.g., as WSGI middleware),
-and accelerator may be used to fetch some responses from origin servers
-which are never directly returned to the client (e.g., expanding XIncludes
-or other "page assembly" markup).  In such cases, the accelerator may be
-configured to ignore some other requirements of the RFC (such as setting
-'Age' and 'Warning' headers).
+an accelerator may be used to fetch some responses from origin servers
+which are never directly returned to the client (e.g., expanding
+XIncludes or other "page assembly" markup).  In such cases, the
+accelerator may be configured to ignore some other requirements of the
+RFC (such as setting 'Age' and 'Warning' headers).
 
 
 Header: 'Age'
@@ -36,26 +36,59 @@ since they are *not* caches from the perspective of their clients.
 
 - see http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.6
 
+Header: 'Authorization'
+-----------------------
+
+http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.8
+
+The RFC says "When a shared cache (see section 13.7) receives a
+request containing an Authorization field, it MUST NOT return the
+corresponding response as a reply to any other request, unless one of
+the following specific exceptions holds.."
+
+Since the accelerator isn't really a cache as far as the user agent is
+concerned, it miht ignore this and treat the Authorization header as
+an item to vary on.
 
 Header: 'Cache-Control'
 -----------------------
 
 The 'Cache-Control' header may be present in both the request and the
-response.  Because the accelerator is *not* a cache from the perspective
-of the client, it should ignore any 'Cache-Control' header in the request.
+response.  Because the accelerator is *not* a cache from the
+perspective of the client, 'Cache-Control' headers in the request are
+less interesting than those in the response.
 
-- Directives of interest
+ - Request directives of interest
 
-  * 'max-age' (response only)
+  * 'no-cache'
 
-    If set by the origin server, this directive controls how long
-    the response is considered "fresh".  It implies 'public', unless
-    one of the other,  more restrictive directives is present.
+    In development mode, this header might be of interest (to cause
+    the accelerator to be bypassed when the developer presses
+    shift-reload).
+
+- Request directives of no interest
+
+  * 'no-store' (we never cache request data)
+
+  * 'max-age' (we aren't a cache to the client)
+
+  * 'max-stale' (we aren't a cache to the client)
+
+  * 'min-fresh' (we aren't a cache to the client)
+
+  * 'no-transform' (we never transform anything)
+
+  * 'only-if-cached' (we aren't a cache to the client)
+
+  * cache extensions (we ignore them)
+
+- Response directives of interest
 
   * 'public'
 
     The response may be cached freely, even if it might otherwise be
-    considered uncacheable.
+    considered uncacheable (e.g. if it's served up as a result of an
+    authenticated request).
 
   * 'private'
 
@@ -63,34 +96,41 @@ of the client, it should ignore any 'Cache-Control' header in the request.
     response should not be shared with other users.  Field-level
     restrictions are tricky, and not covered here.
 
-  * 'no-cache' (response only)
+  * 'no-cache'
 
     When no field-level restriction is attached, indicates that the
     response should not be served without revalidation, even if fresh.
     Field-level restrictions are tricky, and not covered here.
 
-  * 'no-store' (response only)
+  * 'no-store'
 
-    The response must not be cached at all.
+    The response must not be cached at all.  The accelerator might
+    ignore this if configured to do so by an integrator.
+
+  * 'max-age'
+
+    If set by the origin server, this directive controls how long
+    the response is considered "fresh".  It implies 'public', unless
+    one of the other,  more restrictive directives is present.
 
   * 'must-revalidate'
 
-    Stale responses must be revalidated befor they are served.
+    Stale responses must be revalidated before they are served.
 
-- Not of interest
+  * 'proxy-revalidate'
 
-  * 'min-fresh' (only in request)
+    Stale responses must be revalidated before they are served (shared
+    caches only; private caches can ignore this directive).
 
-  * 'max-stale' (only in request)
-
-  * 'only-if-cached' (only in request)
-
-  * 's-maxage' (relevant only for downstream caches)
+- Response directives of no interest
 
   * 'no-transform' (relevant only for downstream caches)
 
-- see http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.9
+  * 's-maxage' (relevant only for downstream caches)
 
+  * cache extensions (we don't care about them in general)
+
+- see http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.9
 
 Header: 'Date'
 --------------
@@ -103,7 +143,13 @@ apparently fresh to downstream caches.
 
 
 Header: 'ETag'
------------------
+--------------
+
+The ETag header is a HTTP header whereby a HTTP server can indicate
+the identify of a given entity variant or version. This identity can
+then be used to validate if it still is current, or in case of Vary to
+find which one of a known list of variants are valid for the current
+user/request.
 
 Either "strong" or "weak" (when prefixed by 'W/'), entity tags identify
 a particular "version" of a resource.
@@ -112,6 +158,29 @@ a particular "version" of a resource.
 
 - http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.19
 
+The preferred behavior for an HTTP/1.1 origin server is to send both a
+strong entity tag and a Last-Modified value.
+
+ETags can be used for validation (to validate cached entries) or Vary
+support, using If-None-Match to find the proper variant amongst a set
+of cached entries.
+
+To check freshness, a browser sends the ETag of a cached page as the
+value of an If-None-Match header
+(http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.26).  If
+the page is stale, the server should send back a 200 status plus the
+new payload.  If the page is not stale, the server should send back a
+304 Not Modified and an empty payload. XXX If-Match??
+
+None of this is always useful for acceleration of dynamic content,
+because the applications we're attempting to accelerate are almost
+never I/O bound.  Furthermore, often it's just exactly as expensive
+for the server to regenerate the entire payload and return it as it is
+to do the work to 304-respond to a "conditional get".
+
+In general, an accelerator might just always pass requests that
+contain an If-None-Match header (an ETag is the value) to the origin
+server without consulting the cache.
 
 Header: 'Expires'
 -----------------
@@ -124,7 +193,65 @@ from the 'Expires' header value.
 - http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.21
 
 
+Header: 'Vary'
+--------------
+
+The Vary field value indicates the set of request-header fields that
+fully determines, while the response is fresh, whether a cache is
+permitted to use the response to reply to a subsequent request without
+revalidation. For uncacheable or stale responses, the Vary field value
+advises the user agent about the criteria that were used to select the
+representation
+
+http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.44
+
+Values referred to in Vary response headers might be used to find a
+resource in the cache that would otherwise need to be regenerated on
+the origin server.
+
+A poilcy's store method should compute a cache key based on Vary
+header values.  When a request comes in, a *sequence* of entities
+would be consulted during fetch, and one (or none) would be returned
+by comparing each entity against request environment data.
+
 Header: 'Last-Modified'
 -----------------------
 
 - http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.29
+
+Header: 'If-Modified-Since'
+---------------------------
+
+Part of "validation" (related to If-None-Match).
+
+Header: 'Range':
+---------------
+
+HTTP retrieval requests using conditional or unconditional GET methods
+MAY request one or more sub-ranges of the entity, instead of the
+entire entity, using the Range request header.
+
+http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.35
+
+A simple accelerator policy should probably pass requests with a Range
+header along to the application and not attempt to cache the response.
+
+Misc
+----
+
+Responses to https requests should only be stored if the person who
+sets up the accelerator overrides some default "dont cache https
+responses" policy.
+
+Requests with a Cache-Control: max-age=0 should be treated like
+"Pragma: no-cache" requests:
+http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.9.4
+
+We should never store the transfer-encoding response header (or any
+other hop-by-hop) headers in a representation of an entity.  Scarecrow
+hop-by-hop list (from httplib2): ['connection', 'keep-alive',
+'proxy-authenticate', 'proxy-authorization', 'te', 'trailers',
+'transfer-encoding', 'upgrade']
+
+We should probably cache anything with a 2XX response code, and ignore
+stuff with non-2XX responses. Except 206 (partial response).
