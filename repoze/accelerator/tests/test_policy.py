@@ -17,6 +17,11 @@ class TestAcceleratorPolicy(unittest.TestCase):
             'REQUEST_METHOD': 'GET',
             }
 
+    def _makeHeaders(self):
+        from email.Utils import formatdate
+        now = formatdate()
+        return [('Date', now)]
+
     def test_class_conforms_to_IPolicy(self):
         from zope.interface.verify import verifyClass
         from repoze.accelerator.interfaces import IPolicy
@@ -38,14 +43,16 @@ class TestAcceleratorPolicy(unittest.TestCase):
         policy = self._makeOne(storage)
         environ = self._makeEnviron()
         environ['REQUEST_METHOD'] = 'POST'
-        result = policy.store('200 OK', [], environ)
+        headers = self._makeHeaders()
+        result = policy.store('200 OK', headers, environ)
         self.assertEqual(result, None)
 
     def test_store_not_cacheable_pragma_no_cache(self):
         storage = DummyStorage()
         policy = self._makeOne(storage)
         environ = self._makeEnviron()
-        headers = [ ('pragma', 'no-cache') ]
+        headers = self._makeHeaders()
+        headers.append(('pragma', 'no-cache'))
         result = policy.store('200 OK', headers, environ)
         self.assertEqual(result, None)
 
@@ -53,7 +60,8 @@ class TestAcceleratorPolicy(unittest.TestCase):
         storage = DummyStorage()
         policy = self._makeOne(storage)
         environ = self._makeEnviron()
-        headers = [ ('cache-control', 'no-cache') ]
+        headers = self._makeHeaders()
+        headers.append(('cache-control', 'no-cache'))
         result = policy.store('200 OK', headers, environ)
         self.assertEqual(result, None)
 
@@ -61,7 +69,8 @@ class TestAcceleratorPolicy(unittest.TestCase):
         storage = DummyStorage()
         policy = self._makeOne(storage)
         environ = self._makeEnviron()
-        headers = [ ('cache-control', 'no-cache') ]
+        headers = self._makeHeaders()
+        headers.append(('cache-control', 'no-cache'))
         result = policy.store('200 OK', headers, environ)
         self.assertEqual(result, None)
 
@@ -69,7 +78,8 @@ class TestAcceleratorPolicy(unittest.TestCase):
         storage = DummyStorage()
         policy = self._makeOne(storage)
         environ = self._makeEnviron()
-        result = policy.store('500 Error', [], environ)
+        headers = self._makeHeaders()
+        result = policy.store('500 Error', headers, environ)
         self.assertEqual(result, None)
 
     def test_store_allowed_request_method_cacheable(self):
@@ -78,38 +88,35 @@ class TestAcceleratorPolicy(unittest.TestCase):
         policy.allowed_methods = ('FOO',)
         environ = self._makeEnviron()
         environ['REQUEST_METHOD'] = 'FOO'
-        from email.Utils import formatdate
-        now = formatdate()
-        result = policy.store('200 OK', [('Date', now)], environ)
+        headers = self._makeHeaders()
+        result = policy.store('200 OK', headers, environ)
         self.assertEqual(result, None)
         self.assertEqual(storage.url, 'http://example.com')
         self.assertEqual(storage.status, '200 OK')
-        self.assertEqual(storage.outheaders, [('Date', now)])
+        self.assertEqual(storage.outheaders, headers)
 
     def test_store_no_request_method_cacheable(self):
         storage = DummyStorage()
         policy = self._makeOne(storage)
         environ = self._makeEnviron()
         del environ['REQUEST_METHOD']
-        from email.Utils import formatdate
-        now = formatdate()
-        result = policy.store('200 OK', [('Date', now)], environ)
+        headers = self._makeHeaders()
+        result = policy.store('200 OK', headers, environ)
         self.assertEqual(result, None)
         self.assertEqual(storage.url, 'http://example.com')
         self.assertEqual(storage.status, '200 OK')
-        self.assertEqual(storage.outheaders, [('Date', now)])
+        self.assertEqual(storage.outheaders, headers)
 
     def test_store_get_request_method_cacheable(self):
         storage = DummyStorage()
         policy = self._makeOne(storage)
         environ = self._makeEnviron()
-        from email.Utils import formatdate
-        now = formatdate()
-        result = policy.store('200 OK', [('Date', now)], environ)
+        headers = self._makeHeaders()
+        result = policy.store('200 OK', headers, environ)
         self.assertEqual(result, None)
         self.assertEqual(storage.url, 'http://example.com')
         self.assertEqual(storage.status, '200 OK')
-        self.assertEqual(storage.outheaders, [('Date', now)])
+        self.assertEqual(storage.outheaders, headers)
 
     def test_fetch_fails_post_request_method(self):
         storage = DummyStorage(result=123)
