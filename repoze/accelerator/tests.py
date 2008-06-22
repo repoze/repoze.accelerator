@@ -2,62 +2,60 @@ import unittest
 
 _MARKER = object()
 
-class TestRAMStorage(unittest.TestCase):
+class TestMemoryStorage(unittest.TestCase):
     def _getTargetClass(self):
-        from repoze.accelerator.middleware import RAMStorage
-        return RAMStorage
+        from repoze.accelerator.storage import MemoryStorage
+        return MemoryStorage
 
-    def _makeOne(self, lock, config=_MARKER):
+    def _makeOne(self, lock):
         klass = self._getTargetClass()
-        if config is _MARKER:
-            return klass(lock)
-        return klass(lock, config=config)
+        return klass(lock)
 
     def test_class_conforms_to_IStorage(self):
-        from repoze.accelerator.interfaces import verifyClass
+        from zope.interface.verify import verifyClass
         from repoze.accelerator.interfaces import IStorage
         verifyClass(IStorage, self._getTargetClass())
 
-    def test_class_provides_IStorageFactory(self):
-        from repoze.accelerator.interfaces import verifyObject
-        from repoze.accelerator.interfaces import IStorageFactory
-        verifyObject(IStorageFactory, self._getTargetClass())
-
     def test_instance_conforms_to_IStorage(self):
-        from repoze.accelerator.interfaces import verifyObject
+        from zope.interface.verify import verifyObject
         from repoze.accelerator.interfaces import IStorage
         verifyObject(IStorage, self._makeOne(DummyLock()))
 
-    def test_ctor_accepts_config(self):
-        lock = DummyLock()
-        storage = self._makeOne(lock, config={})
+    def test_factory_provides_IStorageFactory(self):
+        from zope.interface.verify import verifyObject
+        from repoze.accelerator.interfaces import IStorageFactory
+        from repoze.accelerator.storage import make_memory_storage
+        verifyObject(IStorageFactory, make_memory_storage)
 
     def test_store_nonexistent(self):
         lock = DummyLock()
         storage = self._makeOne(lock)
         headers = [('Header1', 'value1')]
-        handler = storage.store('url', 'status', headers)
+        handler = storage.store('url', 'status', headers, [], [])
         self.failIf(handler is None)
         chunks = ['chunk1', 'chunk2']
         for chunk in ('chunk1', 'chunk2'):
             handler.write(chunk)
         handler.close()
-        self.assertEqual(storage.data['url'], ('status', headers, chunks))
+        self.assertEqual(storage.data['url'][(), ()],
+                         ('status', headers, chunks))
         self.assertEqual(lock.acquired, 1)
         self.assertEqual(lock.released, 1)
 
     def test_store_existing(self):
         lock = DummyLock()
         storage = self._makeOne(lock)
-        storage.data['url'] = ('otherstatus', (), ())
+        storage.data['url'] = {}
+        storage.data['url'][(), ()] = ('otherstatus', (), ())
         headers = [('Header1', 'value1')]
-        handler = storage.store('url', 'status', headers)
+        handler = storage.store('url', 'status', headers, [], [])
         self.failIf(handler is None)
         chunks = ['chunk1', 'chunk2']
         for chunk in ('chunk1', 'chunk2'):
             handler.write(chunk)
         handler.close()
-        self.assertEqual(storage.data['url'], ('status', headers, chunks))
+        self.assertEqual(storage.data['url'][(), ()],
+                         ('status', headers, chunks))
         self.assertEqual(lock.acquired, 1)
         self.assertEqual(lock.released, 1)
 
@@ -69,19 +67,25 @@ class TestRAMStorage(unittest.TestCase):
     def test_fetch_existing(self):
         lock = DummyLock()
         storage = self._makeOne(lock)
-        storage.data['url'] = 1
-        self.assertEqual(storage.fetch('url'), 1)
+        storage.data['url'] = {
+            (1, 2):(200, [], []),
+            (3, 4):(203, [], [])
+            }
+        result = storage.fetch('url')
+        result.sort()
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0], (200, [], [], 1, 2))
+        self.assertEqual(result[1], (203, [], [], 3, 4))
 
-class TestNaivePolicy(unittest.TestCase):
+
+class TestAcceleratorPolicy(unittest.TestCase):
     def _getTargetClass(self):
-        from repoze.accelerator.middleware import NaivePolicy
-        return NaivePolicy
+        from repoze.accelerator.policy import AcceleratorPolicy
+        return AcceleratorPolicy
 
-    def _makeOne(self, storage, config=_MARKER):
+    def _makeOne(self, storage):
         klass = self._getTargetClass()
-        if config is _MARKER:
-            return klass(storage)
-        return klass(storage, config=config)
+        return klass(storage)
 
     def _makeEnviron(self):
         return {
@@ -92,23 +96,20 @@ class TestNaivePolicy(unittest.TestCase):
             }
 
     def test_class_conforms_to_IPolicy(self):
-        from repoze.accelerator.interfaces import verifyClass
+        from zope.interface.verify import verifyClass
         from repoze.accelerator.interfaces import IPolicy
         verifyClass(IPolicy, self._getTargetClass())
 
-    def test_class_provides_IPolicyFactory(self):
-        from repoze.accelerator.interfaces import verifyObject
-        from repoze.accelerator.interfaces import IPolicyFactory
-        verifyObject(IPolicyFactory, self._getTargetClass())
-
     def test_instance_conforms_to_IPolicy(self):
-        from repoze.accelerator.interfaces import verifyObject
+        from zope.interface.verify import verifyObject
         from repoze.accelerator.interfaces import IPolicy
         verifyObject(IPolicy, self._makeOne(DummyStorage()))
 
-    def test_ctor_accepts_config(self):
-        storage = DummyStorage()
-        policy = self._makeOne(storage, config={})
+    def test_factory_provides_IPolicyFactory(self):
+        from zope.interface.verify import verifyObject
+        from repoze.accelerator.interfaces import IPolicyFactory
+        from repoze.accelerator.policy import make_accelerator_policy
+        verifyObject(IPolicyFactory, make_accelerator_policy)
 
     def test_store_not_cacheable_post_request_method(self):
         storage = DummyStorage()
@@ -151,36 +152,42 @@ class TestNaivePolicy(unittest.TestCase):
 
     def test_store_allowed_request_method_cacheable(self):
         storage = DummyStorage()
-        policy = self._makeOne(storage,
-                               config={'policy.allowed_methods': 'GET FOO'})
+        policy = self._makeOne(storage)
+        policy.allowed_methods = ('FOO',)
         environ = self._makeEnviron()
         environ['REQUEST_METHOD'] = 'FOO'
-        result = policy.store('200 OK', [('header1', 'value1')], environ)
-        self.assertEqual(result, False)
+        from email.Utils import formatdate
+        now = formatdate()
+        result = policy.store('200 OK', [('Date', now)], environ)
+        self.assertEqual(result, None)
         self.assertEqual(storage.url, 'http://example.com')
         self.assertEqual(storage.status, '200 OK')
-        self.assertEqual(storage.outheaders, [('header1', 'value1')])
+        self.assertEqual(storage.outheaders, [('Date', now)])
 
     def test_store_no_request_method_cacheable(self):
         storage = DummyStorage()
         policy = self._makeOne(storage)
         environ = self._makeEnviron()
         del environ['REQUEST_METHOD']
-        result = policy.store('200 OK', [('header1', 'value1')], environ)
-        self.assertEqual(result, False)
+        from email.Utils import formatdate
+        now = formatdate()
+        result = policy.store('200 OK', [('Date', now)], environ)
+        self.assertEqual(result, None)
         self.assertEqual(storage.url, 'http://example.com')
         self.assertEqual(storage.status, '200 OK')
-        self.assertEqual(storage.outheaders, [('header1', 'value1')])
+        self.assertEqual(storage.outheaders, [('Date', now)])
 
     def test_store_get_request_method_cacheable(self):
         storage = DummyStorage()
         policy = self._makeOne(storage)
         environ = self._makeEnviron()
-        result = policy.store('200 OK', [('header1', 'value1')], environ)
-        self.assertEqual(result, False)
+        from email.Utils import formatdate
+        now = formatdate()
+        result = policy.store('200 OK', [('Date', now)], environ)
+        self.assertEqual(result, None)
         self.assertEqual(storage.url, 'http://example.com')
         self.assertEqual(storage.status, '200 OK')
-        self.assertEqual(storage.outheaders, [('header1', 'value1')])
+        self.assertEqual(storage.outheaders, [('Date', now)])
 
     def test_fetch_fails_post_request_method(self):
         storage = DummyStorage(result=123)
@@ -207,19 +214,27 @@ class TestNaivePolicy(unittest.TestCase):
         self.failIfEqual(result, 123)
 
     def test_fetch_succeeds_no_request_method(self):
-        storage = DummyStorage(result=123)
+        from email.Utils import formatdate
+        now = formatdate()
+        cc = 'max-age=4000'
+        expected = (200, [('Date', now), ('Cache-Control', cc)], [], [], [])
+        storage = DummyStorage(result=[expected])
         policy = self._makeOne(storage)
         environ = self._makeEnviron()
         del environ['REQUEST_METHOD']
         result = policy.fetch(environ)
-        self.assertEqual(result, 123)
+        self.assertEqual(result, expected[:3])
 
     def test_fetch_succeeds_get_request_method(self):
-        storage = DummyStorage(result=123)
+        from email.Utils import formatdate
+        now = formatdate()
+        cc = 'max-age=4000'
+        expected = (200, [('Date', now), ('Cache-Control', cc)], [], [], [])
+        storage = DummyStorage(result=[expected])
         policy = self._makeOne(storage)
         environ = self._makeEnviron()
         result = policy.fetch(environ)
-        self.assertEqual(result, 123)
+        self.assertEqual(result, expected[:3])
 
 class TestAcceleratorMiddleware(unittest.TestCase):
     def _getTargetClass(self):
@@ -324,14 +339,16 @@ class DummyPolicy:
         return self.handler
 
 class DummyStorage:
-    def __init__(self, result=None, writer=False):
+    def __init__(self, result=None, writer=None):
         self.result = result
         self.writer = writer
 
-    def store(self, url, status, outheaders):
+    def store(self, url, status, outheaders, req_discrims, env_discrims):
         self.url = url
         self.status = status
         self.outheaders = outheaders
+        self.req_discrims = req_discrims
+        self.env_discrims = env_discrims
         return self.writer
 
     def fetch(self, url):

@@ -26,6 +26,9 @@ XIncludes or other "page assembly" markup).  In such cases, the
 accelerator may be configured to ignore some other requirements of the
 RFC (such as setting 'Age' and 'Warning' headers).
 
+An overview of caching in HTTP in the RFC is here:
+
+http://www.w3.org/Protocols/rfc2616/rfc2616-sec13.html
 
 Header: 'Age'
 -------------
@@ -205,6 +208,17 @@ representation
 
 http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.44
 
+A server SHOULD use the Vary header field to inform a cache of what
+request-header fields were used to select among multiple
+representations of a cacheable response subject to server-driven
+negotiation. The set of header fields named by the Vary field value is
+known as the "selecting" request-headers.  When the cache receives a
+subsequent request whose Request-URI specifies one or more cache
+entries including a Vary header field, the cache MUST NOT use such a
+cache entry to construct a response to the new request unless all of
+the selecting request-headers present in the new request match the
+corresponding stored request-headers in the original request.
+
 Values referred to in Vary response headers might be used to find a
 resource in the cache that would otherwise need to be regenerated on
 the origin server.
@@ -213,6 +227,10 @@ A poilcy's store method should compute a cache key based on Vary
 header values.  When a request comes in, a *sequence* of entities
 would be consulted during fetch, and one (or none) would be returned
 by comparing each entity against request environment data.
+
+A Vary header field-value of "*" always fails to match and subsequent
+requests on that resource can only be properly interpreted by the
+origin server.
 
 Header: 'Last-Modified'
 -----------------------
@@ -255,3 +273,18 @@ hop-by-hop list (from httplib2): ['connection', 'keep-alive',
 
 We should probably cache anything with a 2XX response code, and ignore
 stuff with non-2XX responses. Except 206 (partial response).
+
+Not sure what to do about Set-Cookie headers.  See
+http://www.squid-cache.org/mail-archive/squid-dev/200101/0446.html .
+
+Simplifying assumptions
+-----------------------
+
+- We never store responses or fetch cached entities for Range
+  requests.
+
+- We always pass conditional requests (requests with
+  If-Modified-Since, If-Match, If-None-Match, etc.) through to the
+  application without getting involved in revalidation ourselves.  We
+  aren't interested in playing in any bandwidth-conservation schemes.
+

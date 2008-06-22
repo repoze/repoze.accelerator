@@ -1,21 +1,4 @@
-
-try:
-    from zope.interface import Interface
-    from zope.interface import implements
-    from zope.interface import provides
-    from zope.interface.verify import verifyClass
-    from zope.interface.verify import verifyObject
-except ImportError:
-    class Interface:
-        pass
-    def implements(iface):
-        pass
-    def provides(iface):
-        pass
-    def verifyClass(iface, klass):
-        return True
-    def verifyObject(iface, object):
-        return True
+from zope.interface import Interface
 
 class IChunkHandler(Interface):
     """ API of the helper object returned from a call to 'IStorage.store'.
@@ -68,16 +51,21 @@ class IStorage(Interface):
     """ Reqired API of plugins which manage the cache's backing store.
     """
     def fetch(url):
-        """ Return a response from the backing store for the given 'url'.
+        """ Return a sequence of entries from the backing store for
+        the given 'url'.  An entry is in the form (status, headers, body_iter,
+        req_discrims, env_discrims).
 
         o Return None on a miss.
         """
 
-    def store(self, url, status, headers):
+    def store(url, status, headers, req_discrims, env_discrims):
         """ Prepare to cache a response to a backing store.
 
-        o 'url' is the key for the response.
-
+        o 'url' is the key for the response used during fetch.
+          Two stored entries should "hash" to the same value
+          if the tuple (url, req_discrims, env_discrims) is equal
+          for both.
+        
         o 'status' and 'headers' should be saved as well.
 
         o Return an object implementing IChunkHandler, which will
