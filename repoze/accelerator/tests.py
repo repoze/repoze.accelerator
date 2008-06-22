@@ -300,6 +300,77 @@ class TestAcceleratorMiddleware(unittest.TestCase):
         self.assertEqual(policy.handler.closed, True)
 
 
+class Test_main(unittest.TestCase):
+
+    def _callFUT(self, app, global_conf, **local_conf):
+        from repoze.accelerator.middleware import main
+        return main(app, global_conf, **local_conf)
+
+    def _makeApp(self):
+        return object()
+
+    def test_main_defaults(self):
+        from repoze.accelerator.middleware import NaivePolicy
+        from repoze.accelerator.middleware import RAMStorage
+        app = self._makeApp()
+
+        accel = self._callFUT(app, {})
+
+        self.failUnless(accel.app is app)
+        self.failUnless(isinstance(accel.policy, NaivePolicy))
+        self.failUnless(isinstance(accel.policy.storage, RAMStorage))
+
+    def test_main_factories(self):
+
+        app = self._makeApp()
+
+        accel = self._callFUT(app,
+                              {},
+                              storage=_makeStorage,
+                              policy=_makePolicy,
+                             )
+
+        self.failUnless(accel.app is app)
+        self.failUnless(isinstance(accel.policy, _Policy))
+        self.failUnless(isinstance(accel.policy.config, dict))
+        self.failUnless(isinstance(accel.policy.storage.config, dict))
+
+    def test_main_entry_points(self):
+
+        app = self._makeApp()
+
+        accel = self._callFUT(app,
+                              {},
+                              storage='repoze.accelerator.tests:_makeStorage',
+                              policy='repoze.accelerator.tests:_makePolicy',
+                             )
+
+        self.failUnless(accel.app is app)
+        self.failUnless(isinstance(accel.policy, _Policy))
+        self.failUnless(isinstance(accel.policy.config, dict))
+        self.failUnless(isinstance(accel.policy.storage.config, dict))
+
+class _Storage:
+    config = None
+
+def _makeStorage(config=None):
+    storage = _Storage()
+    if config is not None:
+        storage.config = config
+    return storage
+
+class _Policy:
+    config = None
+
+    def __init__(self, storage):
+        self.storage = storage
+
+def _makePolicy(storage, config=None):
+    policy = _Policy(storage)
+    if config is not None:
+        policy.config = config
+    return policy
+
 class DummyHandler:
     def __init__(self):
         self.chunks = []

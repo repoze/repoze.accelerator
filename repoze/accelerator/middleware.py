@@ -45,14 +45,22 @@ class Accelerator:
 
         raise StopIteration
 
+def _resolveEntryPoint(name):
+    from pkg_resources import EntryPoint
+    return EntryPoint.parse('x=%s' % name).load(False)
+
 def main(app, global_conf, **local_conf):
     from repoze.accelerator.storage import make_memory_storage
     from repoze.accelerator.policy import make_accelerator_policy
 
     storage_factory = local_conf.get('storage', make_memory_storage)
+    if isinstance(storage_factory, basestring):
+        storage_factory = _resolveEntryPoint(storage_factory)
     storage = storage_factory(config=local_conf)
 
     policy_factory = local_conf.get('policy', make_accelerator_policy)
+    if isinstance(policy_factory, basestring):
+        policy_factory = _resolveEntryPoint(policy_factory)
     policy = policy_factory(storage, config=local_conf)
 
     return Accelerator(app, policy)
