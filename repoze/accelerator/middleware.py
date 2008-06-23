@@ -6,9 +6,13 @@ class Accelerator:
         self.policy = policy
 
     def __call__(self, environ, start_response):
+        def _loggit(msg):
+            print >> environ['wsgi.errors'], msg
+
         result = self.policy.fetch(environ)
 
         if result is not None:
+            _loggit('repoze.accelerator: HIT %s' % environ['PATH_INFO'])
             status, headers, content = result
             headers = list(headers) + [('X-Cached-By', 'repoze.accelerator')]
             start_response(status, headers)
@@ -16,6 +20,7 @@ class Accelerator:
                 yield chunk
             raise StopIteration
 
+        _loggit('repoze.accelerator: MISS %s' % environ['PATH_INFO'])
         catch_response = []
         written = []
 
