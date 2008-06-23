@@ -374,7 +374,54 @@ class TestAcceleratorPolicy(unittest.TestCase):
         result = policy.fetch(environ)
         self.assertEqual(result, None)
 
-    # XXX: need freshness tests
+    def test_fresh_via_max_age(self):
+        headers = self._makeHeaders()
+        headers.append(('Cache-Control', 'max-age=4000'))
+        expected = (200, headers, [], [], [])
+        storage = DummyStorage(fetch_result=[expected])
+        policy = self._makeOne(storage)
+        environ = self._makeEnviron()
+        result = policy.fetch(environ)
+        self.assertEqual(result, (200, headers, []))
+
+    def test_fresh_via_expires(self):
+        headers = self._makeHeaders()
+        from email.Utils import formatdate
+        import time
+        expires = formatdate(time.time() + 5000)
+        headers.append(('Expires', expires))
+        expected = (200, headers, [], [], [])
+        storage = DummyStorage(fetch_result=[expected])
+        policy = self._makeOne(storage)
+        environ = self._makeEnviron()
+        result = policy.fetch(environ)
+        self.assertEqual(result, (200, headers, []))
+
+    def test_stale_via_max_age(self):
+        import time
+        from email.Utils import formatdate
+        date = formatdate(time.time() - 5000)
+        headers = [('Date', date)]
+        headers.append(('Cache-Control', 'max-age=10'))
+        expected = (200, headers, [], [], [])
+        storage = DummyStorage(fetch_result=[expected])
+        policy = self._makeOne(storage)
+        environ = self._makeEnviron()
+        result = policy.fetch(environ)
+        self.assertEqual(result, None)
+
+    def test_stale_via_expires(self):
+        headers = self._makeHeaders()
+        import time
+        from email.Utils import formatdate
+        expires = formatdate(time.time() - 5000)
+        headers.append(('Expires', expires))
+        expected = (200, headers, [], [], [])
+        storage = DummyStorage(fetch_result=[expected])
+        policy = self._makeOne(storage)
+        environ = self._makeEnviron()
+        result = policy.fetch(environ)
+        self.assertEqual(result, None)
 
 class DummyStorage:
     def __init__(self, fetch_result=None, store_result=None):
