@@ -127,7 +127,7 @@ class AcceleratorPolicy:
         if environ.get('REQUEST_METHOD', 'GET') not in self.allowed_methods:
             return
 
-        request_headers = parse_headers(environ)
+        request_headers = list(parse_headers(environ))
 
         # if a Cache-Control/Pragma: no-cache header is in the request,
         # and if honor_shift_reload is true, we don't serve it from cache
@@ -237,12 +237,12 @@ class AcceleratorPolicy:
             for (getter, discrim) in discrims:
                 stored_name, stored_value = discrim
                 strval = getter(stored_name)
-                if strval is None or strval.lower() != stored_value:
+                if strval is None or strval != stored_value:
                     matching_entries.remove(entry)
                     break
 
         if matching_entries:
-            match = matching_entries[0]
+            match = matching_entries[0] # this is essentially random
             status, headers, body = match[:3]
             return status, headers, body
 

@@ -82,6 +82,15 @@ class TestAcceleratorPolicy(unittest.TestCase):
         result = policy.store('200 OK', headers, environ)
         self.assertEqual(result, None)
 
+    def test_store_not_cacheable_bad_maxage(self):
+        storage = DummyStorage()
+        policy = self._makeOne(storage)
+        environ = self._makeEnviron()
+        headers = self._makeHeaders()
+        headers.append(('Cache-Control', 'max-age=thisisbad'))
+        result = policy.store('200 OK', headers, environ)
+        self.assertEqual(result, None)
+
     def test_store_not_cacheable_nostore_https_responses(self):
         storage = DummyStorage()
         policy = self._makeOne(storage)
@@ -245,6 +254,38 @@ class TestAcceleratorPolicy(unittest.TestCase):
         result = policy.fetch(environ)
         self.failIfEqual(result, False)
 
+    def test_fetch_fails_range_request(self):
+        storage = DummyStorage(fetch_result=False)
+        policy = self._makeOne(storage)
+        environ = self._makeEnviron()
+        environ['HTTP_RANGE'] = '200-300'
+        result = policy.fetch(environ)
+        self.failIfEqual(result, False)
+
+    def test_fetch_fails_conditional_ims_request(self):
+        storage = DummyStorage(fetch_result=False)
+        policy = self._makeOne(storage)
+        environ = self._makeEnviron()
+        environ['HTTP_IF_MODIFIED_SINCE'] = 'whenever'
+        result = policy.fetch(environ)
+        self.failIfEqual(result, False)
+
+    def test_fetch_fails_conditional_if_none_match_request(self):
+        storage = DummyStorage(fetch_result=False)
+        policy = self._makeOne(storage)
+        environ = self._makeEnviron()
+        environ['HTTP_IF_NONE_MATCH'] = 'yeah'
+        result = policy.fetch(environ)
+        self.failIfEqual(result, False)
+
+    def test_fetch_fails_conditional_if_match_request(self):
+        storage = DummyStorage(fetch_result=False)
+        policy = self._makeOne(storage)
+        environ = self._makeEnviron()
+        environ['HTTP_IF_MATCH'] = 'yeah'
+        result = policy.fetch(environ)
+        self.failIfEqual(result, False)
+
     def test_fetch_succeeds_no_request_method(self):
         headers = self._makeHeaders()
         cc = 'max-age=4000'
@@ -267,6 +308,62 @@ class TestAcceleratorPolicy(unittest.TestCase):
         environ = self._makeEnviron()
         result = policy.fetch(environ)
         self.assertEqual(result, expected[:3])
+
+    def test_fetch_succeeds_more_than_one_response_from_storage(self):
+        headers = self._makeHeaders()
+        cc = 'max-age=4000'
+        headers.append(('Cache-Control', cc))
+        expected1 = (200, headers, [], [], [])
+        expected2 = (200, headers, [], [], [])
+        storage = DummyStorage(fetch_result=[expected1] + [expected2])
+        policy = self._makeOne(storage)
+        environ = self._makeEnviron()
+        result = policy.fetch(environ)
+        self.assertEqual(result, expected1[:3])
+
+    def test_fetch_succeeds_via_discrimination(self):
+        headers = self._makeHeaders()
+        cc = 'max-age=4000'
+        headers.append(('Cache-Control', cc))
+        stored = [
+            (200, headers, [], [('Cookie', '12345')], []),
+            (200, headers, [], [('X-Foo', '12345'), ('Cookie', '12345')], []),
+            (200, headers, [], [('X-Bar', '123')], []),
+             ]
+        storage = DummyStorage(fetch_result=stored)
+        policy = self._makeOne(storage)
+        environ = self._makeEnviron()
+        environ['HTTP_COOKIE'] = '12345'
+        environ['HTTP_X_FOO'] = '12345'
+        result = policy.fetch(environ)
+        self.assertEqual(result, stored[1][:3])
+
+    def test_fetch_fails_via_discrimination(self):
+        headers = self._makeHeaders()
+        cc = 'max-age=4000'
+        headers.append(('Cache-Control', cc))
+        stored = [
+            (200, headers, [], [('Cookie', '12345')], []),
+            (200, headers, [], [('X-Foo', '12345'), ('Cookie', '12345')], []),
+            (200, headers, [], [('X-Bar', '123')], []),
+             ]
+        storage = DummyStorage(fetch_result=stored)
+        policy = self._makeOne(storage)
+        environ = self._makeEnviron()
+        environ['HTTP_COOKIE'] = '5678'
+        environ['HTTP_X_FOO'] = '5678'
+        result = policy.fetch(environ)
+        self.assertEqual(result, None)
+
+    def test_fetch_fails_no_response_from_storage(self):
+        headers = self._makeHeaders()
+        cc = 'max-age=4000'
+        headers.append(('Cache-Control', cc))
+        storage = DummyStorage(fetch_result=[])
+        policy = self._makeOne(storage)
+        environ = self._makeEnviron()
+        result = policy.fetch(environ)
+        self.assertEqual(result, None)
 
 class DummyStorage:
     def __init__(self, fetch_result=None, store_result=None):
