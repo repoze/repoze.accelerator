@@ -11,7 +11,14 @@ class TestAcceleratorMiddleware(unittest.TestCase):
         return klass(app, policy)
 
     def _makeEnviron(self):
-        return {}
+
+        class DummyErrors:
+            def write(self, *args, **kw):
+                pass
+
+        return {'PATH_INFO': '/',
+                'wsgi.errors': DummyErrors(),
+               }
 
     def test_call_fetch_from_cache(self):
         app = DummyApp()
