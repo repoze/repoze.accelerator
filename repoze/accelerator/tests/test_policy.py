@@ -91,6 +91,15 @@ class TestAcceleratorPolicy(unittest.TestCase):
         result = policy.store('200 OK', headers, environ)
         self.assertEqual(result, None)
 
+    def test_store_not_cacheable_maxage_None(self):
+        storage = DummyStorage()
+        policy = self._makeOne(storage)
+        environ = self._makeEnviron()
+        headers = self._makeHeaders()
+        headers.append(('Cache-Control', 'public'))
+        result = policy.store('200 OK', headers, environ)
+        self.assertEqual(result, None)
+
     def test_store_not_cacheable_nostore_https_responses(self):
         storage = DummyStorage()
         policy = self._makeOne(storage)

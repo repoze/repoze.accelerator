@@ -173,7 +173,7 @@ class AcceleratorPolicy:
         if cc_header:
             cc_parts = parse_cache_control_header(cc_header)
             try:
-                if int(cc_parts.get('max-age')) == 0:
+                if int(cc_parts.get('max-age', '0')) == 0:
                     return
             except ValueError:
                 return
@@ -343,7 +343,7 @@ def parse_cache_control_header(header):
                 key, val = [ x.strip() for x in part.split('=', 1) ]
                 cc_parts[key] = val
             else:
-                cc_parts[key] = None
+                cc_parts[part] = None
     return cc_parts
 
 def asbool(val):
