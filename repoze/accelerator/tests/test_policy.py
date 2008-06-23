@@ -365,6 +365,8 @@ class TestAcceleratorPolicy(unittest.TestCase):
         result = policy.fetch(environ)
         self.assertEqual(result, None)
 
+    # XXX: need freshness tests
+
 class DummyStorage:
     def __init__(self, fetch_result=None, store_result=None):
         self.fetch_result = fetch_result
