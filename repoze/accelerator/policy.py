@@ -159,7 +159,7 @@ class AcceleratorPolicy:
             # XXX purge?
 
     def store(self, status, response_headers, environ):
-        request_headers = parse_headers(environ)
+        request_headers = list(parse_headers(environ))
 
         # abort if we shouldn't store this response
         request_method = environ.get('REQUEST_METHOD', 'GET')
@@ -191,7 +191,7 @@ class AcceleratorPolicy:
             vary_header_names.extend(
                 [ x.strip().lower() for x in vary.split(',') ])
         if self.always_vary_on_headers:
-            vary_header_names.extend(list(self.always_vary_on))
+            vary_header_names.extend(list(self.always_vary_on_headers))
 
         if '*' in vary_header_names:
             return
