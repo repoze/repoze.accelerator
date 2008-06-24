@@ -1,18 +1,19 @@
 import itertools
 
 class Accelerator:
-    def __init__(self, app, policy):
+    def __init__(self, app, policy, logger):
         self.app = app
         self.policy = policy
+        self.logger = logger
 
     def __call__(self, environ, start_response):
-        def _loggit(msg):
-            print >> environ['wsgi.errors'], msg
+        logger = self.logger
 
         result = self.policy.fetch(environ)
 
         if result is not None:
-            _loggit('repoze.accelerator: HIT %s' % environ['PATH_INFO'])
+            logger and logger.info(
+                'repoze.accelerator: HIT %s' % environ['PATH_INFO'])
             status, headers, content = result
             headers = list(headers) + [('X-Cached-By', 'repoze.accelerator')]
             start_response(status, headers)
@@ -20,7 +21,8 @@ class Accelerator:
                 yield chunk
             raise StopIteration
 
-        _loggit('repoze.accelerator: MISS %s' % environ['PATH_INFO'])
+        logger and logger.info(
+            'repoze.accelerator: MISS %s' % environ['PATH_INFO'])
         catch_response = []
         written = []
 
@@ -57,16 +59,22 @@ def _resolveEntryPoint(name):
 def main(app, global_conf, **local_conf):
     from repoze.accelerator.storage import make_memory_storage
     from repoze.accelerator.policy import make_accelerator_policy
+    from repoze.accelerator.logger import make_logger
+
+    logger_factory = local_conf.get('logger', make_logger)
+    if isinstance(logger_factory, basestring):
+        logger_factory = _resolveEntryPoint(logger_factory)
+    logger = logger_factory(local_conf)
 
     storage_factory = local_conf.get('storage', make_memory_storage)
     if isinstance(storage_factory, basestring):
         storage_factory = _resolveEntryPoint(storage_factory)
-    storage = storage_factory(config=local_conf)
+    storage = storage_factory(logger, local_conf)
 
     policy_factory = local_conf.get('policy', make_accelerator_policy)
     if isinstance(policy_factory, basestring):
         policy_factory = _resolveEntryPoint(policy_factory)
-    policy = policy_factory(storage, config=local_conf)
+    policy = policy_factory(logger, storage, local_conf)
 
-    return Accelerator(app, policy)
+    return Accelerator(app, policy, logger)
 

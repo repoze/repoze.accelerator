@@ -9,7 +9,8 @@ class TestMemoryStorage(unittest.TestCase):
 
     def _makeOne(self, lock):
         klass = self._getTargetClass()
-        return klass(lock)
+        logger = None
+        return klass(logger, lock)
 
     def test_class_conforms_to_IStorage(self):
         from zope.interface.verify import verifyClass
@@ -76,6 +77,11 @@ class TestMemoryStorage(unittest.TestCase):
         self.assertEqual(len(result), 2)
         self.assertEqual(result[0], (200, [], [], 1, 2))
         self.assertEqual(result[1], (203, [], [], 3, 4))
+
+    def test_storage_factory_defaults(self):
+        from repoze.accelerator.storage import make_memory_storage
+        storage = make_memory_storage(None, {})
+        self.assertEqual(storage.logger, None)
 
 class DummyLock:
     def __init__(self):

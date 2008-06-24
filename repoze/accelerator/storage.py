@@ -10,7 +10,8 @@ from repoze.accelerator.interfaces import IStorageFactory
 class MemoryStorage:
     implements(IStorage)
 
-    def __init__(self, lock=threading.Lock()):
+    def __init__(self, logger, lock=threading.Lock()):
+        self.logger = logger
         self.data = {}
         self.lock = lock
 
@@ -44,7 +45,7 @@ class MemoryStorage:
             L.append((status, headers, body, req_d, env_d))
         return L
 
-def make_memory_storage(config=None):
-    return MemoryStorage()
+def make_memory_storage(logger, config):
+    return MemoryStorage(logger)
 directlyProvides(make_memory_storage, IStorageFactory)
     

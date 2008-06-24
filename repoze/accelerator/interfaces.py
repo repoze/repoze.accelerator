@@ -1,5 +1,16 @@
 from zope.interface import Interface
 
+class ILoggerFactory(Interface):
+    """ Required API of entry point which creates a logger.
+    """
+    def __call__(config):
+        """ Return a PEP 282 logger.
+
+        o 'config', if passed, will be a dictionary whose values may be
+          used to configure the logger.  By convention, the keys which
+          are relevant to the logger start with 'logger.'.
+        """
+
 class IChunkHandler(Interface):
     """ API of the helper object returned from a call to 'IStorage.store'.
     """
@@ -36,8 +47,11 @@ class IPolicy(Interface):
 class IPolicyFactory(Interface):
     """ Required API of the entry point which creates a policy plugin.
     """
-    def __call__(storage, config=None):
+    def __call__(logger, storage, config):
         """ Return a new policy plugin.
+
+        o The plugin may use the services of the PEP 282 logger
+          passed in as 'logger'.  This may be None.
         
         o The new plugin should use the given 'storage' plugin as a 
           backing store.
@@ -75,8 +89,10 @@ class IStorage(Interface):
 class IStorageFactory(Interface):
     """ Required API of the entry point which creates a storage plugin.
     """
-    def __call__(config=None):
+    def __call__(logger, config):
         """ Return a new storage plugin.
+
+        o 'logger' will be a PEP 282 logger instance or None.
         
         o 'config', if passed, will be a dictionary whose values may be
           used to configure the plugin.  By convention, the keys which

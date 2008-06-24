@@ -8,7 +8,7 @@ class TestAcceleratorMiddleware(unittest.TestCase):
 
     def _makeOne(self, app, policy):
         klass = self._getTargetClass()
-        return klass(app, policy)
+        return klass(app, policy, None)
 
     def _makeEnviron(self):
 
@@ -91,6 +91,7 @@ class Test_main(unittest.TestCase):
         self.failUnless(accel.app is app)
         self.failUnless(isinstance(accel.policy, AcceleratorPolicy))
         self.failUnless(isinstance(accel.policy.storage, MemoryStorage))
+        self.assertEqual(accel.logger, None)
 
     def test_main_factories(self):
 
@@ -98,6 +99,7 @@ class Test_main(unittest.TestCase):
 
         accel = self._callFUT(app,
                               {},
+                              logger=_makeLogger,
                               storage=_makeStorage,
                               policy=_makePolicy,
                              )
@@ -106,6 +108,7 @@ class Test_main(unittest.TestCase):
         self.failUnless(isinstance(accel.policy, _Policy))
         self.failUnless(isinstance(accel.policy.config, dict))
         self.failUnless(isinstance(accel.policy.storage.config, dict))
+        self.failUnless(isinstance(accel.logger, DummyLogger))
 
     def test_main_entry_points(self):
 
@@ -114,6 +117,7 @@ class Test_main(unittest.TestCase):
         accel = self._callFUT(
             app,
             {},
+            logger='repoze.accelerator.tests.test_middleware:_makeLogger',
             storage='repoze.accelerator.tests.test_middleware:_makeStorage',
             policy='repoze.accelerator.tests.test_middleware:_makePolicy',
             )
@@ -122,14 +126,14 @@ class Test_main(unittest.TestCase):
         self.failUnless(isinstance(accel.policy, _Policy))
         self.failUnless(isinstance(accel.policy.config, dict))
         self.failUnless(isinstance(accel.policy.storage.config, dict))
+        self.failUnless(isinstance(accel.logger, DummyLogger))
 
 class _Storage:
     config = None
 
-def _makeStorage(config=None):
+def _makeStorage(logger, config):
     storage = _Storage()
-    if config is not None:
-        storage.config = config
+    storage.config = config
     return storage
 
 class _Policy:
@@ -138,11 +142,18 @@ class _Policy:
     def __init__(self, storage):
         self.storage = storage
 
-def _makePolicy(storage, config=None):
+def _makePolicy(logger, storage, config):
     policy = _Policy(storage)
-    if config is not None:
-        policy.config = config
+    policy.config = config
     return policy
+
+class DummyLogger:
+    pass
+
+def _makeLogger(config):
+    logger = DummyLogger()
+    logger.config = config
+    return logger
 
 class DummyHandler:
     def __init__(self):

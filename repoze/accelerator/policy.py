@@ -17,7 +17,7 @@ class NullPolicy:
     """
     implements(IPolicy)
 
-    def __init__(self, storage):
+    def __init__(self):
         pass
 
     def fetch(self, environ):
@@ -26,8 +26,8 @@ class NullPolicy:
     def store(self, status, headers, environ):
         pass
 
-def make_null_policy(storage, config=None):
-    return NullPolicy(storage)
+def make_null_policy(logger, storage, config):
+    return NullPolicy()
 directlyProvides(make_null_policy, IPolicyFactory)
 
 class AcceleratorPolicy:
@@ -109,6 +109,7 @@ class AcceleratorPolicy:
     implements(IPolicy)
 
     def __init__(self,
+                 logger,
                  storage,
                  allowed_methods=('GET',),
                  always_vary_on_headers=(),
@@ -116,6 +117,7 @@ class AcceleratorPolicy:
                  honor_shift_reload=True,
                  store_https_responses=False,
                  ):
+        self.logger = logger
         self.storage = storage
         self.allowed_methods = allowed_methods
         self.always_vary_on_headers = always_vary_on_headers
@@ -292,9 +294,7 @@ class AcceleratorPolicy:
 
         return False
 
-def make_accelerator_policy(storage, config=None):
-    if config is None:
-        config = {}
+def make_accelerator_policy(logger, storage, config):
     allowed_methods = config.get('policy.allowed_methods', 'GET')
     allowed_methods = [x.upper() for x in
                        filter(None, allowed_methods.split()) ]
@@ -308,6 +308,7 @@ def make_accelerator_policy(storage, config=None):
                                         'REQUEST_METHOD')
     always_vary_on_environ = filter(None, always_vary_on_environ.split())
     return AcceleratorPolicy(
+        logger,
         storage,
         allowed_methods,
         always_vary_on_headers,

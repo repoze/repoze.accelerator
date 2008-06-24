@@ -7,7 +7,8 @@ class TestAcceleratorPolicy(unittest.TestCase):
 
     def _makeOne(self, storage):
         klass = self._getTargetClass()
-        return klass(storage)
+        logger = None
+        return klass(logger, storage)
 
     def _makeEnviron(self):
         return {
@@ -422,6 +423,31 @@ class TestAcceleratorPolicy(unittest.TestCase):
         environ = self._makeEnviron()
         result = policy.fetch(environ)
         self.assertEqual(result, None)
+
+    def test_make_accelerator_policy_factory_defaults(self):
+        from repoze.accelerator.policy import make_accelerator_policy
+        policy = make_accelerator_policy(None, DummyStorage(), {})
+        self.assertEqual(policy.allowed_methods, ['GET'])
+        self.assertEqual(policy.honor_shift_reload, False)
+        self.assertEqual(policy.store_https_responses, False)
+        self.assertEqual(policy.always_vary_on_headers, [])
+        self.assertEqual(policy.always_vary_on_environ, ['REQUEST_METHOD'])
+        self.assertEqual(policy.logger, None)
+
+    def test_make_accelerator_policy_factory_overrides(self):
+        from repoze.accelerator.policy import make_accelerator_policy
+        config = {'policy.allowed_methods':'POST GET',
+                  'policy.honor_shift_reload':'true',
+                  'policy.store_https_responses':'true',
+                  'policy.always_vary_on_headers':'Cookie X-Foo',
+                  'policy.always_vary_on_environ':'REMOTE_USER'}
+        policy = make_accelerator_policy(None, DummyStorage(), config)
+        self.assertEqual(policy.allowed_methods, ['POST', 'GET'])
+        self.assertEqual(policy.honor_shift_reload, True)
+        self.assertEqual(policy.store_https_responses, True)
+        self.assertEqual(policy.always_vary_on_headers, ['Cookie', 'X-Foo'])
+        self.assertEqual(policy.always_vary_on_environ, ['REMOTE_USER'])
+        self.assertEqual(policy.logger, None)
 
 class DummyStorage:
     def __init__(self, fetch_result=None, store_result=None):
