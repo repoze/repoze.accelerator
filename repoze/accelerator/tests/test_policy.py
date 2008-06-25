@@ -130,7 +130,7 @@ class TestAcceleratorPolicy(unittest.TestCase):
         self.assertEqual(result, True)
         self.assertEqual(storage.url, 'http://example.com')
         self.assertEqual(storage.status, '200 OK')
-        self.assertEqual(storage.outheaders, headers)
+        self.assertEqual(storage.headers, headers)
 
     def test_store_no_request_method_cacheable(self):
         storage = DummyStorage(store_result=True)
@@ -142,7 +142,7 @@ class TestAcceleratorPolicy(unittest.TestCase):
         self.assertEqual(result, True)
         self.assertEqual(storage.url, 'http://example.com')
         self.assertEqual(storage.status, '200 OK')
-        self.assertEqual(storage.outheaders, headers)
+        self.assertEqual(storage.headers, headers)
 
     def test_store_get_request_method_cacheable(self):
         storage = DummyStorage(store_result=True)
@@ -153,7 +153,7 @@ class TestAcceleratorPolicy(unittest.TestCase):
         self.assertEqual(result, True)
         self.assertEqual(storage.url, 'http://example.com')
         self.assertEqual(storage.status, '200 OK')
-        self.assertEqual(storage.outheaders, headers)
+        self.assertEqual(storage.headers, headers)
 
     def test_store_with_request_vary(self):
         storage = DummyStorage(store_result=True)
@@ -166,8 +166,11 @@ class TestAcceleratorPolicy(unittest.TestCase):
         self.assertEqual(result, True)
         self.assertEqual(storage.url, 'http://example.com')
         self.assertEqual(storage.status, '200 OK')
-        self.assertEqual(storage.outheaders, headers)
-        self.assertEqual(storage.req_discrims, [('cookie', '12345')])
+        self.assertEqual(storage.headers, headers)
+        discrims = storage.discrims
+        self.assertEqual(len(discrims), 2)
+        self.assertEqual(discrims[0], ('env', ('REQUEST_METHOD', 'GET')))
+        self.assertEqual(discrims[1], ('vary', ('cookie', '12345')))
 
     def test_store_with_always_request_vary(self):
         storage = DummyStorage(store_result=True)
@@ -180,8 +183,11 @@ class TestAcceleratorPolicy(unittest.TestCase):
         self.assertEqual(result, True)
         self.assertEqual(storage.url, 'http://example.com')
         self.assertEqual(storage.status, '200 OK')
-        self.assertEqual(storage.outheaders, headers)
-        self.assertEqual(storage.req_discrims, [('cookie', '12345')])
+        self.assertEqual(storage.headers, headers)
+        discrims = storage.discrims
+        self.assertEqual(len(discrims), 2)
+        self.assertEqual(discrims[0], ('env', ('REQUEST_METHOD', 'GET')))
+        self.assertEqual(discrims[1], ('vary', ('cookie', '12345')))
 
     def test_store_with_always_request_vary_and_plain_request_vary(self):
         storage = DummyStorage(store_result=True)
@@ -196,9 +202,12 @@ class TestAcceleratorPolicy(unittest.TestCase):
         self.assertEqual(result, True)
         self.assertEqual(storage.url, 'http://example.com')
         self.assertEqual(storage.status, '200 OK')
-        self.assertEqual(storage.outheaders, headers)
-        self.assertEqual(storage.req_discrims,
-                         [('cookie', '12345'), ('x-foo', 'xfoo')])
+        self.assertEqual(storage.headers, headers)
+        discrims = storage.discrims
+        self.assertEqual(len(discrims), 3)
+        self.assertEqual(discrims[0], ('env', ('REQUEST_METHOD', 'GET')))
+        self.assertEqual(discrims[1], ('vary', ('cookie', '12345')))
+        self.assertEqual(discrims[2], ('vary', ('x-foo', 'xfoo')))
 
     def test_store_with_always_request_vary_star(self):
         storage = DummyStorage(store_result=True)
@@ -220,8 +229,10 @@ class TestAcceleratorPolicy(unittest.TestCase):
         self.assertEqual(result, True)
         self.assertEqual(storage.url, 'http://example.com')
         self.assertEqual(storage.status, '200 OK')
-        self.assertEqual(storage.outheaders, headers)
-        self.assertEqual(storage.env_discrims, [('REMOTE_USER', '12345')])
+        self.assertEqual(storage.headers, headers)
+        discrims = storage.discrims
+        self.assertEqual(len(discrims), 1)
+        self.assertEqual(discrims[0], ('env', ('REMOTE_USER', '12345')))
 
     def test_store_with_environ_vary_and_req_vary(self):
         storage = DummyStorage(store_result=True)
@@ -236,9 +247,11 @@ class TestAcceleratorPolicy(unittest.TestCase):
         self.assertEqual(result, True)
         self.assertEqual(storage.url, 'http://example.com')
         self.assertEqual(storage.status, '200 OK')
-        self.assertEqual(storage.outheaders, headers)
-        self.assertEqual(storage.req_discrims, [('cookie', '12345')])
-        self.assertEqual(storage.env_discrims, [('REMOTE_USER', '12345')])
+        self.assertEqual(storage.headers, headers)
+        discrims = storage.discrims
+        self.assertEqual(len(discrims), 2)
+        self.assertEqual(discrims[0], ('env', ('REMOTE_USER', '12345')))
+        self.assertEqual(discrims[1], ('vary', ('cookie', '12345')))
 
     def test_fetch_fails_post_request_method(self):
         storage = DummyStorage(fetch_result=False)
@@ -300,63 +313,70 @@ class TestAcceleratorPolicy(unittest.TestCase):
         headers = self._makeHeaders()
         cc = 'max-age=4000'
         headers.append(('Cache-Control', cc))
-        expected = (200, headers, [], [], [])
+        import sys
+        expected = ([], sys.maxint, 200, headers, [], {})
         storage = DummyStorage(fetch_result=[expected])
         policy = self._makeOne(storage)
         environ = self._makeEnviron()
         del environ['REQUEST_METHOD']
         result = policy.fetch(environ)
-        self.assertEqual(result, expected[:3])
+        self.assertEqual(result, expected[2:-1])
 
     def test_fetch_succeeds_get_request_method(self):
         headers = self._makeHeaders()
         cc = 'max-age=4000'
         headers.append(('Cache-Control', cc))
-        expected = (200, headers, [], [], [])
+        import sys
+        expected = ([], sys.maxint, 200, headers, [], {})
         storage = DummyStorage(fetch_result=[expected])
         policy = self._makeOne(storage)
         environ = self._makeEnviron()
         result = policy.fetch(environ)
-        self.assertEqual(result, expected[:3])
+        self.assertEqual(result, expected[2:-1])
 
     def test_fetch_succeeds_more_than_one_response_from_storage(self):
         headers = self._makeHeaders()
         cc = 'max-age=4000'
         headers.append(('Cache-Control', cc))
-        expected1 = (200, headers, [], [], [])
-        expected2 = (200, headers, [], [], [])
+        import sys
+        expected1 = ([], sys.maxint, 200, headers, [], {})
+        expected2 = ([], sys.maxint, 200, headers, [], {})
         storage = DummyStorage(fetch_result=[expected1] + [expected2])
         policy = self._makeOne(storage)
         environ = self._makeEnviron()
         result = policy.fetch(environ)
-        self.assertEqual(result, expected1[:3])
+        self.assertEqual(result, expected1[2:-1])
 
     def test_fetch_succeeds_via_discrimination(self):
         headers = self._makeHeaders()
         cc = 'max-age=4000'
         headers.append(('Cache-Control', cc))
+        import sys
+        then = sys.maxint
         stored = [
-            (200, headers, [], [('Cookie', '12345')], []),
-            (200, headers, [], [('X-Foo', '12345'), ('Cookie', '12345')], []),
-            (200, headers, [], [('X-Bar', '123')], []),
-             ]
+            ([('vary', ('Cookie', '12345'))], then, 200, headers, [], {}),
+            ([('vary', ('Cookie', '12345')), ('vary', ('X-Foo', '12345'))],
+             then, 200, headers, [], {}),
+            ([('vary', ('X-Bar', '123'))], then, 200, headers, [], {}),
+            ]
         storage = DummyStorage(fetch_result=stored)
         policy = self._makeOne(storage)
         environ = self._makeEnviron()
         environ['HTTP_COOKIE'] = '12345'
         environ['HTTP_X_FOO'] = '12345'
         result = policy.fetch(environ)
-        self.assertEqual(result, stored[1][:3])
+        self.assertEqual(result, stored[0][2:-1])
 
     def test_fetch_fails_via_discrimination(self):
         headers = self._makeHeaders()
         cc = 'max-age=4000'
         headers.append(('Cache-Control', cc))
         stored = [
-            (200, headers, [], [('Cookie', '12345')], []),
-            (200, headers, [], [('X-Foo', '12345'), ('Cookie', '12345')], []),
-            (200, headers, [], [('X-Bar', '123')], []),
-             ]
+            ([('vary', ('Cookie', '12345'))], 0, 200, headers, [], {}),
+            ([('vary', ('Cookie', '12345')), ('vary', ('X-Foo', '12345'))],
+                  0, 200, headers, [], {}),
+            ([('vary', ('X-Bar', '123'))], 0, 200, headers, [], {}),
+            ]
         storage = DummyStorage(fetch_result=stored)
         policy = self._makeOne(storage)
         environ = self._makeEnviron()
@@ -378,7 +398,8 @@ class TestAcceleratorPolicy(unittest.TestCase):
     def test_fresh_via_max_age(self):
         headers = self._makeHeaders()
         headers.append(('Cache-Control', 'max-age=4000'))
-        expected = (200, headers, [], [], [])
+        import sys
+        expected = ([], sys.maxint, 200, headers, [], {})
         storage = DummyStorage(fetch_result=[expected])
         policy = self._makeOne(storage)
         environ = self._makeEnviron()
@@ -391,7 +412,8 @@ class TestAcceleratorPolicy(unittest.TestCase):
         import time
         expires = formatdate(time.time() + 5000)
         headers.append(('Expires', expires))
-        expected = (200, headers, [], [], [])
+        import sys
+        expected = ([], sys.maxint, 200, headers, [], {})
         storage = DummyStorage(fetch_result=[expected])
         policy = self._makeOne(storage)
         environ = self._makeEnviron()
@@ -404,7 +426,7 @@ class TestAcceleratorPolicy(unittest.TestCase):
         date = formatdate(time.time() - 5000)
         headers = [('Date', date)]
         headers.append(('Cache-Control', 'max-age=10'))
-        expected = (200, headers, [], [], [])
+        expected = ([], 0, 200, headers, [], {})
         storage = DummyStorage(fetch_result=[expected])
         policy = self._makeOne(storage)
         environ = self._makeEnviron()
@@ -417,7 +439,7 @@ class TestAcceleratorPolicy(unittest.TestCase):
         from email.Utils import formatdate
         expires = formatdate(time.time() - 5000)
         headers.append(('Expires', expires))
-        expected = (200, headers, [], [], [])
+        expected = ([], 0, 200, headers, [], {})
         storage = DummyStorage(fetch_result=[expected])
         policy = self._makeOne(storage)
         environ = self._makeEnviron()
@@ -454,12 +476,13 @@ class DummyStorage:
         self.fetch_result = fetch_result
         self.store_result = store_result
 
-    def store(self, url, status, outheaders, req_discrims, env_discrims):
+    def store(self, url, discrims, expires, status, headers, **extras):
         self.url = url
+        self.discrims = discrims
+        self.expires = expires
         self.status = status
-        self.outheaders = outheaders
-        self.req_discrims = req_discrims
-        self.env_discrims = env_discrims
+        self.headers = headers
+        self.extras = extras
         return self.store_result
 
     def fetch(self, url):

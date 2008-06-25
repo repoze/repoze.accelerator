@@ -152,10 +152,11 @@ class AcceleratorPolicy:
             matching = self._discriminate(entries, request_headers, environ)
             if not matching:
                 return
-        
-            status, response_headers, body = matching
 
-            if self._isfresh(response_headers):
+            now = time.time()
+        
+            discrims, expires, status, response_headers, body, extras = matching
+            if expires > now:
                 return status, response_headers, body
 
             # XXX purge?
@@ -169,6 +170,9 @@ class AcceleratorPolicy:
             return
         if not (status.startswith('200') or status.startswith('203')):
             return
+        if environ['wsgi.url_scheme'] == 'https':
+            if not self.store_https_responses:
+                return
         if self._check_no_cache(response_headers, environ):
             return
         cc_header = header_value(response_headers, 'Cache-Control')
@@ -179,12 +183,6 @@ class AcceleratorPolicy:
                     return
             except ValueError:
                 return
-        if environ['wsgi.url_scheme'] == 'https':
-            if not self.store_https_responses:
-                return
-        date = header_value(response_headers, 'Date')
-        if not date:
-            return
 
         # if we didn't abort due to any condition above, store the response
         vary_header_names = []
@@ -198,55 +196,59 @@ class AcceleratorPolicy:
         if '*' in vary_header_names:
             return
 
-        req_discrims = []
+        discriminators = []
         for header_name in vary_header_names:
             value = header_value(request_headers, header_name)
             if value is not None:
-                req_discrims.append((header_name, value))
-
-        env_discrims = []
+                discriminators.append(('vary', (header_name, value)))
         for varname in self.always_vary_on_environ:
             value = environ.get(varname)
             if value is not None:
-                env_discrims.append((varname, value))
+                discriminators.append(('env', (varname, value)))
 
-        env_discrims.sort()
-        req_discrims.sort()
-        
+        discriminators = tuple(sorted(discriminators))
         headers = endtoend(response_headers)
         url = construct_url(environ)
 
+        # Response headers won't have a date if we aren't proxying to
+        # another http server on our right hand side.
+        date = header_value(response_headers, 'Date')
+        if date is None:
+            date = time.time()
+        else:
+            date = parsedate_tz(date)
+
+        expires = self._expires(date, response_headers)
+
         return self.storage.store(
             url,
+            discriminators,
+            expires,
             status,
             headers,
-            req_discrims,
-            env_discrims,
             )
 
     def _discriminate(self, entries, request_headers, environ):
 
-        def req_getter(name):
-            return header_value(request_headers, name)
-
         matching_entries = entries[:]
 
         for entry in entries:
-            status, headers, body, req_discrims, env_discrims = entry
-            discrims = [ (environ.get, x) for x in env_discrims ]
-            discrims.extend([ (req_getter, x) for x in req_discrims ])
-
-            for (getter, discrim) in discrims:
-                stored_name, stored_value = discrim
-                strval = getter(stored_name)
+            discrims, expires, status, headers, body, extras = entry
+            for discrim in discrims:
+                typ, (stored_name, stored_value) = discrim
+                if typ == 'env':
+                    strval = environ.get(stored_name)
+                elif typ == 'vary':
+                    strval = header_value(request_headers, stored_name)
+                else:
+                    raise ValueError(discrim)
                 if strval is None or strval != stored_value:
                     matching_entries.remove(entry)
                     break
 
         if matching_entries:
             match = matching_entries[0] # this is essentially random
-            status, headers, body = match[:3]
-            return status, headers, body
+            return match
 
     def _check_no_cache(self, headers, environ):
         for nocache in ('Pragma', 'Cache-Control'):
@@ -255,44 +257,35 @@ class AcceleratorPolicy:
                 return True
         return False
 
-    def _isfresh(self, response_headers):
-        date = header_value(response_headers, 'Date')
-        if not date:
-            return False
-        date = parsedate_tz(date)
-        if not date:
-            return False
-        date = calendar.timegm(date)
-        now = time.time()
-        current_age = max(0, now - date)
-        cc_header = header_value(response_headers, 'Cache-Control')
-        expires_header = header_value(response_headers, 'Expires')
+    def _expires(self, date, headers):
+        cc_header = header_value(headers, 'Cache-Control')
+        expires_header = header_value(headers, 'Expires')
 
-        # freshness logic stolen from httplib2
-        lifetime = 0
-
+        # logic stolen from httplib2
         if cc_header is not None:
             header_parts = parse_cache_control_header(cc_header)
             if 'max-age' in header_parts:
                 try:
                     lifetime = int(header_parts['max-age'])
                     if lifetime == 0:
-                        return False
+                        return date
+                    return date + lifetime
                 except ValueError:
-                    lifetime = 0
+                    return date
 
-        if not lifetime:
-            if expires_header is not None:
-                expires = parsedate_tz(expires_header)
-                if expires is None:
-                    lifetime = 0
-                else:
-                    lifetime = max(0, calendar.timegm(expires) - date)
+        if expires_header is not None:
+            expires = parsedate_tz(expires_header)
+            if expires is None:
+                return date
+            else:
+                return calendar.timegm(expires)
 
-        if lifetime > current_age:
-            return True
-
-        return False
+    def _isfresh(self, date, headers):
+        now = time.time()
+        current_age = max(0, now - date)
+        expires = self._expires(date, headers)
+        lifetime = max(0, expires - date)
+        return lifetime > current_age
 
 def make_accelerator_policy(logger, storage, config):
     allowed_methods = config.get('policy.allowed_methods', 'GET')

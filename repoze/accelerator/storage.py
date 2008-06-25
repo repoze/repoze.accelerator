@@ -15,11 +15,9 @@ class MemoryStorage:
         self.data = {}
         self.lock = lock
 
-    def store(self, url, status, headers, req_discrims, env_discrims):
+    def store(self, url, discriminators, expires, status, headers, **extras):
         body = []
         storage = self
-        req_discrims = tuple(req_discrims)
-        env_discrims = tuple(env_discrims)
 
         class SimpleHandler:
             implements(IChunkHandler)
@@ -29,20 +27,20 @@ class MemoryStorage:
             def close(self):
                 storage.lock.acquire()
                 try:
-                    discrims = storage.data.setdefault(url, {})
-                    discrims[(req_discrims, env_discrims)]=status, headers, body
+                    entries = storage.data.setdefault(url, {})
+                    entries[discriminators] = expires,status,headers,body,extras
                 finally:
                     storage.lock.release()
 
         return SimpleHandler()
                 
     def fetch(self, url):
-        discrims = self.data.get(url)
-        if discrims is None:
+        entries = self.data.get(url)
+        if entries is None:
             return None
         L = []
-        for (req_d, env_d), (status, headers, body) in discrims.items():
-            L.append((status, headers, body, req_d, env_d))
+        for discrims, (expires,status,headers,body,extras) in entries.items():
+            L.append((discrims, expires, status, headers, body, extras))
         return L
 
 def make_memory_storage(logger, config):

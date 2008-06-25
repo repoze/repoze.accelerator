@@ -66,21 +66,25 @@ class IStorage(Interface):
     """
     def fetch(url):
         """ Return a sequence of entries from the backing store for
-        the given 'url'.  An entry is in the form (status, headers, body_iter,
-        req_discrims, env_discrims).
+        the given 'url'.  Each entry is in the form
+        (discriminators, expires, status, headers, body_iter, extras).
 
         o Return None on a miss.
         """
 
-    def store(url, status, headers, req_discrims, env_discrims):
+    def store(url, discriminators, expires, status, headers, **extras):
         """ Prepare to cache a response to a backing store.
 
-        o 'url' is the key for the response used during fetch.
-          Two stored entries should "hash" to the same value
-          if the tuple (url, req_discrims, env_discrims) is equal
-          for both.
+        o 'url' is the key for the response used during fetch..
+
+        o 'discrims' is a squence of two-tuples further discriminating the
+          entity.  The combination of the url and the discriminators for
+          a resource identifies it unambiguously.
+
+        o 'expires' is a UNIX timestamp representing the UTC time
+          after which this storage entry will no longer be fresh.
         
-        o 'status' and 'headers' should be saved as well.
+        o 'status', 'headers', and **extras should be saved as well.
 
         o Return an object implementing IChunkHandler, which will
           be used to cache the response body chunks.

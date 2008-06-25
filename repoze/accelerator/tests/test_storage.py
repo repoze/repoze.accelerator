@@ -32,14 +32,14 @@ class TestMemoryStorage(unittest.TestCase):
         lock = DummyLock()
         storage = self._makeOne(lock)
         headers = [('Header1', 'value1')]
-        handler = storage.store('url', 'status', headers, [], [])
+        handler = storage.store('url', (), 0, 'status', headers)
         self.failIf(handler is None)
         chunks = ['chunk1', 'chunk2']
         for chunk in ('chunk1', 'chunk2'):
             handler.write(chunk)
         handler.close()
-        self.assertEqual(storage.data['url'][(), ()],
-                         ('status', headers, chunks))
+        self.assertEqual(storage.data['url'][()],
+                         (0, 'status', headers, chunks, {}))
         self.assertEqual(lock.acquired, 1)
         self.assertEqual(lock.released, 1)
 
@@ -49,14 +49,14 @@ class TestMemoryStorage(unittest.TestCase):
         storage.data['url'] = {}
         storage.data['url'][(), ()] = ('otherstatus', (), ())
         headers = [('Header1', 'value1')]
-        handler = storage.store('url', 'status', headers, [], [])
+        handler = storage.store('url', (), 0, 'status', headers)
         self.failIf(handler is None)
         chunks = ['chunk1', 'chunk2']
         for chunk in ('chunk1', 'chunk2'):
             handler.write(chunk)
         handler.close()
-        self.assertEqual(storage.data['url'][(), ()],
-                         ('status', headers, chunks))
+        self.assertEqual(storage.data['url'][()],
+                         (0, 'status', headers, chunks, {}))
         self.assertEqual(lock.acquired, 1)
         self.assertEqual(lock.released, 1)
 
@@ -69,14 +69,20 @@ class TestMemoryStorage(unittest.TestCase):
         lock = DummyLock()
         storage = self._makeOne(lock)
         storage.data['url'] = {
-            (1, 2):(200, [], []),
-            (3, 4):(203, [], [])
+            ('env', (1, 2)):(0, 200, [], [], {}),
+            ('env', (3, 4)):(0, 203, [], [], {}),
             }
         result = storage.fetch('url')
         result.sort()
         self.assertEqual(len(result), 2)
-        self.assertEqual(result[0], (200, [], [], 1, 2))
-        self.assertEqual(result[1], (203, [], [], 3, 4))
+        self.assertEqual(
+            result[0],
+            (('env', (1,2)), 0, 200, [], [], {})
+            )
+        self.assertEqual(
+            result[1],
+            (('env', (3,4)), 0, 203, [], [], {})
+            )
 
     def test_storage_factory_defaults(self):
         from repoze.accelerator.storage import make_memory_storage
