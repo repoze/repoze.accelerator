@@ -111,13 +111,31 @@ class TestAcceleratorPolicy(unittest.TestCase):
         result = policy.store('200 OK', headers, environ)
         self.assertEqual(result, None)
 
-    def test_store_not_cacheable_no_date_header(self):
-        storage = DummyStorage()
+    def test_store_no_date_header_stores_today(self):
+        storage = DummyStorage(store_result=True)
         policy = self._makeOne(storage)
         environ = self._makeEnviron()
         headers = [('Cache-Control', 'max-age=400')]
         result = policy.store('200 OK', headers, environ)
-        self.assertEqual(result, None)
+        self.assertEqual(result, True)
+        self.assertEqual(storage.url, 'http://example.com')
+        self.assertEqual(storage.status, '200 OK')
+        self.assertEqual(storage.headers, headers)
+        self.failIf(storage.expires is None)
+
+    def test_store_with_date_header_stores_then(self):
+        storage = DummyStorage(store_result=True)
+        policy = self._makeOne(storage)
+        environ = self._makeEnviron()
+        from email.Utils import formatdate
+        then = formatdate(0)
+        headers = [('Cache-Control', 'max-age=400'), ('Date', then)]
+        result = policy.store('200 OK', headers, environ)
+        self.assertEqual(result, True)
+        self.assertEqual(storage.url, 'http://example.com')
+        self.assertEqual(storage.status, '200 OK')
+        self.assertEqual(storage.headers, headers)
+        self.assertEqual(storage.expires, 400)
 
     def test_store_allowed_request_method_cacheable(self):
         storage = DummyStorage(store_result=True)

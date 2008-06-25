@@ -98,7 +98,7 @@ class AcceleratorPolicy:
     - If the request is an https request, and "store_https_responses" is false,
       don't store.
 
-    - If the response does not have a Date header, don't store.
+    - If the response does not have a Date header, assume the date is now.
 
     When storing data to storage:
 
