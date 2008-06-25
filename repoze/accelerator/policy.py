@@ -216,7 +216,7 @@ class AcceleratorPolicy:
         if date is None:
             date = time.time()
         else:
-            date = parsedate_tz(date)
+            date = calendar.timegm(parsedate_tz(date))
 
         expires = self._expires(date, response_headers)
 
