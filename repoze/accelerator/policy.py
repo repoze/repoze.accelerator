@@ -159,8 +159,6 @@ class AcceleratorPolicy:
             if expires > now:
                 return status, response_headers, body
 
-            # XXX purge?
-
     def store(self, status, response_headers, environ):
         request_headers = list(parse_headers(environ))
 
@@ -219,6 +217,8 @@ class AcceleratorPolicy:
             date = calendar.timegm(parsedate_tz(date))
 
         expires = self._expires(date, response_headers)
+
+        # XXX purge?
 
         return self.storage.store(
             url,

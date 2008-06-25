@@ -413,7 +413,7 @@ class TestAcceleratorPolicy(unittest.TestCase):
         result = policy.fetch(environ)
         self.assertEqual(result, None)
 
-    def test_fresh_via_max_age(self):
+    def test_fetch_fresh_via_max_age(self):
         headers = self._makeHeaders()
         headers.append(('Cache-Control', 'max-age=4000'))
         import sys
@@ -424,7 +424,7 @@ class TestAcceleratorPolicy(unittest.TestCase):
         result = policy.fetch(environ)
         self.assertEqual(result, (200, headers, []))
 
-    def test_fresh_via_expires(self):
+    def test_fetch_fresh_via_expires(self):
         headers = self._makeHeaders()
         from email.Utils import formatdate
         import time
@@ -438,7 +438,7 @@ class TestAcceleratorPolicy(unittest.TestCase):
         result = policy.fetch(environ)
         self.assertEqual(result, (200, headers, []))
 
-    def test_stale_via_max_age(self):
+    def test_fetch_stale_via_max_age(self):
         import time
         from email.Utils import formatdate
         date = formatdate(time.time() - 5000)
@@ -451,7 +451,7 @@ class TestAcceleratorPolicy(unittest.TestCase):
         result = policy.fetch(environ)
         self.assertEqual(result, None)
 
-    def test_stale_via_expires(self):
+    def test_fetch_stale_via_expires(self):
         headers = self._makeHeaders()
         import time
         from email.Utils import formatdate
