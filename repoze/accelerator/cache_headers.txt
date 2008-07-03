@@ -277,6 +277,56 @@ stuff with non-2XX responses. Except 206 (partial response).
 Not sure what to do about Set-Cookie headers.  See
 http://www.squid-cache.org/mail-archive/squid-dev/200101/0446.html .
 
+Dogpiling (aka "thundering herd") solution from
+http://psychicorigami.com/ :
+
+"""
+The standard way to use a cache is to do something like:
+
+value = cache.get('key', None)
+if value is None:
+    value = recompute_cached_value()
+    cache['key'] = value
+return value
+
+Now this is fine normally. When the cached value expires the next
+request will simply call recompute_cached_value() and the cache will
+be updated for future requests.
+
+The trouble arises when recompute_cached_value() takes a long time to
+run and you have have a lot of other requests running at the same
+time. If a request is still recalculating the value and another
+request comes along, then that will also attempt to recalculate the
+value. This will in turn probably slow down the calculation going on,
+making it more likely that the next request to arrive will also
+trigger a recalculation and so on. Very quickly you can end up with
+tens/hundreds/thousands of request all attempting to recalculate the
+cached value and you have lost most of the advantage of caching in the
+first place.
+
+So to handle this situation more gracefully this caching decorator
+employs a two stage expiry.
+
+First there is a hard cut off expiry that works like normal. This is
+set to occur later than the other expiry time and is the value that
+would be fed to memcache or equivalent.
+
+The second expiry time set is the one normally used. Basically when we
+store/retrieve the cached data we also have access to this expiry time
+(and the version). If we see that we need to recalculate the value
+(due to the expiry time being in the past or the version being
+different), then we attempt to grab a lock to recalculate the
+value. If we don't grab the lock, we assume another thread is doing
+the recalculation and rather than wait around we simply serve up the
+old (stale) data. This should mean that one thread (potentially
+per-process) will end up doing the recalculation rather than several.
+
+This also means that we don't have to remove a value from the cache to
+force a refresh (which might cause dogpiling). Instead we can update
+whatever value we use in our version function, to trigger a graceful
+refresh.
+"""
+
 Simplifying assumptions
 -----------------------
 
@@ -287,4 +337,5 @@ Simplifying assumptions
   If-Modified-Since, If-Match, If-None-Match, etc.) through to the
   application without getting involved in revalidation ourselves.  We
   aren't interested in playing in any bandwidth-conservation schemes.
+
 
