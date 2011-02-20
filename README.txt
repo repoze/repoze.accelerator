@@ -121,5 +121,5 @@ canonical.  Apologies.  Please read the source for more info for now.
 Reporting Bugs / Development Versions
 -------------------------------------
 
-Visit http://bugs.repoze.org to report bugs.  Visit
-http://svn.repoze.org to download development or tagged versions.
+Visit http://github.com/repoze/repoze.accelerator/issues to report bugs.
+Visit http://github.com/repoze to download development or tagged versions.
