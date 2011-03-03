@@ -50,7 +50,7 @@ corresponding response as a reply to any other request, unless one of
 the following specific exceptions holds.."
 
 Since the accelerator isn't really a cache as far as the user agent is
-concerned, it miht ignore this and treat the Authorization header as
+concerned, it might ignore this and treat the Authorization header as
 an item to vary on.
 
 Header: 'Cache-Control'
