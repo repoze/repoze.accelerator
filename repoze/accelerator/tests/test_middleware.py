@@ -13,7 +13,7 @@ class TestAcceleratorMiddleware(unittest.TestCase):
     def _makeEnviron(self):
 
         class DummyErrors:
-            def write(self, *args, **kw):
+            def write(self, *args, **kw): #pragma NO COVER
                 pass
 
         return {'PATH_INFO': '/',

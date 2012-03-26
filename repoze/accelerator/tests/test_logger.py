@@ -29,7 +29,7 @@ class TestLoggerFactory(unittest.TestCase):
             self.assertEqual(logger.handlers[0].stream, sys.stdout)
         finally:
             del os.environ[envvar]
-            
+
     def test_with_stdout_filename(self):
         import logging
         import sys
@@ -38,15 +38,6 @@ class TestLoggerFactory(unittest.TestCase):
         logger = f(config)
         self.failUnless(isinstance(logger, logging.Logger))
         self.assertEqual(logger.handlers[0].stream, sys.stdout)
-        
-    def test_with_stderr_filename(self):
-        import logging
-        import sys
-        f = self._getFUT()
-        config = {'logger.filename':'stderr'}
-        logger = f(config)
-        self.failUnless(isinstance(logger, logging.Logger))
-        self.assertEqual(logger.handlers[0].stream, sys.stderr)
 
     def test_with_stderr_filename(self):
         import logging
