@@ -104,7 +104,7 @@ class AcceleratorPolicy:
 
     - Store the status, the end-to-end headers in the response, and
       information about request header and environment variance.
-      
+
     """
     implements(IPolicy)
 
@@ -124,7 +124,7 @@ class AcceleratorPolicy:
         self.always_vary_on_environ = always_vary_on_environ
         self.honor_shift_reload = honor_shift_reload
         self.store_https_responses = store_https_responses
-        
+
     def fetch(self, environ):
         if environ.get('REQUEST_METHOD', 'GET') not in self.allowed_methods:
             return
@@ -154,7 +154,7 @@ class AcceleratorPolicy:
                 return
 
             now = time.time()
-        
+
             discrims, expires, status, response_headers, body, extras = matching
             if expires > now:
                 return status, response_headers, body
