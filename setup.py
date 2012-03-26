@@ -26,6 +26,9 @@ except:
     README = ''
     CHANGES = ''
 
+requires = ['Paste', 'zope.interface']
+testing_extras = ['nose', 'coverage']
+
 setup(name='repoze.accelerator',
       version=__version__,
       description='An HTTP caching accelerator in middleware',
@@ -48,12 +51,14 @@ setup(name='repoze.accelerator',
       include_package_data=True,
       namespace_packages=['repoze'],
       zip_safe=False,
-      tests_require = ['Paste', 'zope.interface'],
-      install_requires=['Paste', 'zope.interface'],
+      tests_require=requires,
+      install_requires=requires,
       test_suite="repoze.accelerator.tests",
       entry_points = """\
         [paste.filter_app_factory]
         accelerator = repoze.accelerator.middleware:main
-      """
-      )
-
+      """,
+      extras_require = {
+        'testing': requires + testing_extras,
+      },
+)
