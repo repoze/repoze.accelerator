@@ -240,7 +240,7 @@ class AcceleratorPolicy:
                     strval = environ.get(stored_name)
                 elif typ == 'vary':
                     strval = header_value(request_headers, stored_name)
-                else:
+                else: #pragma NO COVER
                     raise ValueError(discrim)
                 if strval is None or strval != stored_value:
                     matching_entries.remove(entry)
@@ -267,10 +267,8 @@ class AcceleratorPolicy:
             if 'max-age' in header_parts:
                 try:
                     lifetime = int(header_parts['max-age'])
-                    if lifetime == 0:
-                        return date
                     return date + lifetime
-                except ValueError:
+                except ValueError: #pragma NO COVER belt-and-suspenders
                     return date
 
         if expires_header is not None:
@@ -280,12 +278,6 @@ class AcceleratorPolicy:
             else:
                 return calendar.timegm(expires)
 
-    def _isfresh(self, date, headers):
-        now = time.time()
-        current_age = max(0, now - date)
-        expires = self._expires(date, headers)
-        lifetime = max(0, expires - date)
-        return lifetime > current_age
 
 def make_accelerator_policy(logger, storage, config):
     allowed_methods = config.get('policy.allowed_methods', 'GET')

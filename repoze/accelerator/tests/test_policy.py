@@ -1,14 +1,6 @@
 import unittest
 
-class TestAcceleratorPolicy(unittest.TestCase):
-    def _getTargetClass(self):
-        from repoze.accelerator.policy import AcceleratorPolicy
-        return AcceleratorPolicy
-
-    def _makeOne(self, storage):
-        klass = self._getTargetClass()
-        logger = None
-        return klass(logger, storage)
+class _PolicyBase(object):
 
     def _makeEnviron(self):
         return {
@@ -33,11 +25,64 @@ class TestAcceleratorPolicy(unittest.TestCase):
         from repoze.accelerator.interfaces import IPolicy
         verifyObject(IPolicy, self._makeOne(DummyStorage()))
 
+
+class TestNullPolicy(unittest.TestCase, _PolicyBase):
+
+    def _makeOne(self, storage):
+        return self._getTargetClass()()
+
+    def _getTargetClass(self):
+        from repoze.accelerator.policy import NullPolicy
+        return NullPolicy
+
+    def test_factory(self):
+        from repoze.accelerator.policy import make_null_policy
+        storage = DummyStorage()
+        policy = make_null_policy(None, storage, {})
+        self.failUnless(isinstance(policy, self._getTargetClass()))
+
+    def test_fetch(self):
+        storage = DummyStorage()
+        policy = self._makeOne(storage)
+        environ = self._makeEnviron()
+        def _fetch(*args, **kw):
+            raise ValueError("Shouldn't store") #pragma NO COVER
+        storage.fetch = _fetch
+        self.assertEqual(policy.fetch(environ), None)
+
+    def test_store(self):
+        storage = DummyStorage()
+        policy = self._makeOne(storage)
+        environ = self._makeEnviron()
+        headers = self._makeHeaders()
+        def _store(*args, **kw):
+            raise ValueError("Shouldn't store") #pragma NO COVER
+        storage.store = _store
+        policy.store('200 OK', headers, environ) # doesn't raise
+
+
+class Test_make_null_policy(unittest.TestCase):
+
+    def _getFUT(self):
+        from repoze.accelerator.policy import make_null_policy
+        return make_null_policy
+
     def test_factory_provides_IPolicyFactory(self):
         from zope.interface.verify import verifyObject
         from repoze.accelerator.interfaces import IPolicyFactory
-        from repoze.accelerator.policy import make_accelerator_policy
-        verifyObject(IPolicyFactory, make_accelerator_policy)
+        verifyObject(IPolicyFactory, self._getFUT())
+
+
+class TestAcceleratorPolicy(unittest.TestCase, _PolicyBase):
+
+    def _makeOne(self, storage):
+        klass = self._getTargetClass()
+        logger = None
+        return klass(logger, storage)
+
+    def _getTargetClass(self):
+        from repoze.accelerator.policy import AcceleratorPolicy
+        return AcceleratorPolicy
 
     def test_store_not_cacheable_post_request_method(self):
         storage = DummyStorage()
@@ -136,6 +181,35 @@ class TestAcceleratorPolicy(unittest.TestCase):
         self.assertEqual(storage.status, '200 OK')
         self.assertEqual(storage.headers, headers)
         self.assertEqual(storage.expires, 400)
+
+    def test_store_with_date_header_no_cc_but_valid_expires_header(self):
+        storage = DummyStorage(store_result=True)
+        policy = self._makeOne(storage)
+        environ = self._makeEnviron()
+        from email.Utils import formatdate
+        then = formatdate(0)
+        until = formatdate(400)
+        headers = [('Expires', until), ('Date', then)]
+        result = policy.store('200 OK', headers, environ)
+        self.assertEqual(result, True)
+        self.assertEqual(storage.url, 'http://example.com')
+        self.assertEqual(storage.status, '200 OK')
+        self.assertEqual(storage.headers, headers)
+        self.assertEqual(storage.expires, 400)
+
+    def test_store_with_date_header_no_cc_and_invalid_expires_header(self):
+        storage = DummyStorage(store_result=True)
+        policy = self._makeOne(storage)
+        environ = self._makeEnviron()
+        from email.Utils import formatdate
+        then = formatdate(0)
+        headers = [('Expires', 'thisisbad'), ('Date', then)]
+        result = policy.store('200 OK', headers, environ)
+        self.assertEqual(result, True)
+        self.assertEqual(storage.url, 'http://example.com')
+        self.assertEqual(storage.status, '200 OK')
+        self.assertEqual(storage.headers, headers)
+        self.assertEqual(storage.expires, 0)
 
     def test_store_allowed_request_method_cacheable(self):
         storage = DummyStorage(store_result=True)
@@ -327,6 +401,21 @@ class TestAcceleratorPolicy(unittest.TestCase):
         result = policy.fetch(environ)
         self.failIfEqual(result, False)
 
+    def test_fetch_fails_env_nomatch(self):
+        headers = self._makeHeaders()
+        cc = 'max-age=4000'
+        headers.append(('Cache-Control', cc))
+        import sys
+        expected = ([('env', ('REMOTE_USER', '12345'))],
+                    sys.maxint, 200, headers, [], {})
+        storage = DummyStorage(fetch_result=[expected])
+        policy = self._makeOne(storage)
+        policy.always_vary_on_environ = ('REMOTE_USER',)
+        environ = self._makeEnviron()
+        environ['REMOTE_USER'] = '23456'
+        result = policy.fetch(environ)
+        self.failIfEqual(result, False)
+
     def test_fetch_succeeds_no_request_method(self):
         headers = self._makeHeaders()
         cc = 'max-age=4000'
@@ -464,9 +553,20 @@ class TestAcceleratorPolicy(unittest.TestCase):
         result = policy.fetch(environ)
         self.assertEqual(result, None)
 
-    def test_make_accelerator_policy_factory_defaults(self):
+
+class Test_make_accelerator_policy(unittest.TestCase):
+
+    def _getFUT(self):
         from repoze.accelerator.policy import make_accelerator_policy
-        policy = make_accelerator_policy(None, DummyStorage(), {})
+        return make_accelerator_policy
+
+    def test_factory_provides_IPolicyFactory(self):
+        from zope.interface.verify import verifyObject
+        from repoze.accelerator.interfaces import IPolicyFactory
+        verifyObject(IPolicyFactory, self._getFUT())
+
+    def test_make_accelerator_policy_factory_defaults(self):
+        policy = self._getFUT()(None, DummyStorage(), {})
         self.assertEqual(policy.allowed_methods, ['GET'])
         self.assertEqual(policy.honor_shift_reload, False)
         self.assertEqual(policy.store_https_responses, False)
@@ -475,13 +575,12 @@ class TestAcceleratorPolicy(unittest.TestCase):
         self.assertEqual(policy.logger, None)
 
     def test_make_accelerator_policy_factory_overrides(self):
-        from repoze.accelerator.policy import make_accelerator_policy
         config = {'policy.allowed_methods':'POST GET',
                   'policy.honor_shift_reload':'true',
                   'policy.store_https_responses':'true',
                   'policy.always_vary_on_headers':'Cookie X-Foo',
                   'policy.always_vary_on_environ':'REMOTE_USER'}
-        policy = make_accelerator_policy(None, DummyStorage(), config)
+        policy = self._getFUT()(None, DummyStorage(), config)
         self.assertEqual(policy.allowed_methods, ['POST', 'GET'])
         self.assertEqual(policy.honor_shift_reload, True)
         self.assertEqual(policy.store_https_responses, True)
@@ -489,7 +588,9 @@ class TestAcceleratorPolicy(unittest.TestCase):
         self.assertEqual(policy.always_vary_on_environ, ['REMOTE_USER'])
         self.assertEqual(policy.logger, None)
 
+
 class DummyStorage:
+
     def __init__(self, fetch_result=None, store_result=None):
         self.fetch_result = fetch_result
         self.store_result = store_result
